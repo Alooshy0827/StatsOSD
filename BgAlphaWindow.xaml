@@ -1,0 +1,23 @@
+<Window x:Class="CpuHud.BgAlphaWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="背景透明度"
+        WindowStyle="ToolWindow"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Microsoft YaHei UI">
+    <StackPanel Margin="16,12">
+        <DockPanel LastChildFill="False">
+            <TextBlock x:Name="ValueText" DockPanel.Dock="Right" Text="90%"
+                       Foreground="#FF4D9FFF" FontWeight="Bold" VerticalAlignment="Center" />
+            <TextBlock Text="背景不透明度" VerticalAlignment="Center" />
+        </DockPanel>
+        <Slider x:Name="Slider" Minimum="0" Maximum="100" TickFrequency="5"
+                IsSnapToTickEnabled="False" Margin="0,10,0,0" ValueChanged="OnValueChanged" />
+        <TextBlock TextWrapping="Wrap" Foreground="#FF8A8A9A" FontSize="11" Margin="0,10,0,0"
+                   Text="0% = 背景完全透明（纯文字悬浮）；100% = 全不透明。拖动滑杆实时预览右上角 OSD 效果，Esc 关闭。" />
+    </StackPanel>
+</Window>
