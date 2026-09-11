@@ -45,7 +45,6 @@ namespace StatsOSD
             _overlay.Show();
             _overlay.CornerIndex = _cfg.Corner;
             _overlay.SetForceTopmost(_cfg.ForceTopmost);
-            _overlay.SetShowInTaskbar(_cfg.ShowInTaskbar);
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += OnTick;
@@ -87,6 +86,26 @@ namespace StatsOSD
                     ExitApp();
                 };
                 dumpTimer.Start();
+            }
+
+            // 托盘位置：--traypos promoted|overflow|status  执行后退出
+            string tpArg = ParseArg(e.Args, "--traypos");
+            if (tpArg != null)
+            {
+                if (string.Equals(tpArg, "status", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool? cur = TrayPlacement.IsPromoted();
+                    Log("traypos status -> " + (cur == null ? "未登记（图标从未出现）" : (cur.Value ? "常显区" : "溢出区")));
+                }
+                else
+                {
+                    string msg;
+                    bool ok = TrayPlacement.SetPromoted(
+                        string.Equals(tpArg, "promoted", StringComparison.OrdinalIgnoreCase), out msg);
+                    Log("traypos " + tpArg + " -> " + (ok ? "OK" : "FAIL") + " / " + msg);
+                }
+                ExitApp();
+                return;
             }
 
             // 自启管理：--autostart on|off|status  执行后退出（等价于托盘里的"开机自启"开关）
@@ -215,9 +234,9 @@ namespace StatsOSD
             }
             menu.Items.Add(miPos);
 
-            // 小图标位置（悬停二级菜单）：托盘 / 任务栏
+            // 小图标位置（悬停二级菜单）：托盘常显区 / 溢出区
             var miIcon = new WF.ToolStripMenuItem("小图标位置");
-            string[] places = { "托盘（通知区域）", "任务栏" };
+            string[] places = { "显示在托盘常显区", "收进托盘溢出区（默认）" };
             for (int i = 0; i < 2; i++)
             {
                 int k = i;
@@ -242,6 +261,8 @@ namespace StatsOSD
 
             // ── 组 4：工具 ──
             Add(menu, "导出传感器清单", (s, e) => DumpSensorsToFile());
+            Add(menu, "重启资源管理器（使托盘位置生效）", (s, e) => RestartExplorer());
+            Add(menu, "打开任务栏设置（手动调整托盘图标）", (s, e) => OpenTaskbarSettings());
 
             menu.Items.Add(new WF.ToolStripSeparator());
 
@@ -282,25 +303,60 @@ namespace StatsOSD
 
         private void SyncIconPlaceChecks()
         {
-            int cur = _cfg.ShowInTaskbar ? 1 : 0;
-            for (int i = 0; i < 2; i++) _miIconPlace[i].Checked = i == cur;
+            bool promoted = TrayPlacement.IsPromoted() == true;
+            _miIconPlace[0].Checked = promoted;
+            _miIconPlace[1].Checked = !promoted;
         }
 
         private void SetIconPlacement(int k)
         {
-            _cfg.ShowInTaskbar = k == 1;
-            _cfg.Save();
-            _overlay?.SetShowInTaskbar(_cfg.ShowInTaskbar);
+            bool wantPromoted = k == 0;
+            string msg;
+            bool ok = TrayPlacement.SetPromoted(wantPromoted, out msg);
+            if (ok) ReRegisterTrayIcon();
             SyncIconPlaceChecks();
+            Log("icon placement: wantPromoted=" + wantPromoted + " ok=" + ok);
             try
             {
-                _tray.ShowBalloonTip(2500, "StatsOSD",
-                    _cfg.ShowInTaskbar
-                        ? "已在任务栏显示窗口图标（托盘图标保留，用于打开设置菜单）"
-                        : "小图标已回到托盘（不占用任务栏）",
-                    WF.ToolTipIcon.Info);
+                _tray.ShowBalloonTip(4000, "StatsOSD",
+                    msg + (ok ? "\n若未立即生效：重开本程序，或用菜单里的「重启资源管理器」" : ""),
+                    ok ? WF.ToolTipIcon.Info : WF.ToolTipIcon.Warning);
             }
             catch { }
+        }
+
+        /// <summary>注销并重新注册托盘图标，促使资源管理器重新读取托盘位置设置</summary>
+        private void ReRegisterTrayIcon()
+        {
+            try
+            {
+                _tray.Visible = false;
+                System.Threading.Thread.Sleep(150);
+                _tray.Visible = true;
+            }
+            catch (Exception ex) { Log("re-register tray icon error: " + ex.Message); }
+        }
+
+        /// <summary>重启资源管理器（任务栏会闪一下），让托盘位置设置确实生效</summary>
+        private void RestartExplorer()
+        {
+            try
+            {
+                foreach (Process pr in Process.GetProcessesByName("explorer"))
+                {
+                    try { pr.Kill(); } catch { }
+                }
+                System.Threading.Thread.Sleep(900);
+                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
+                Log("explorer restarted (tray placement)");
+            }
+            catch (Exception ex) { Log("restart explorer error: " + ex.Message); }
+        }
+
+        private void OpenTaskbarSettings()
+        {
+            try { Process.Start(new ProcessStartInfo("ms-settings:taskbar") { UseShellExecute = true }); }
+            catch (Exception ex) { Log("open taskbar settings error: " + ex.Message); }
         }
 
         private void ToggleVisible()

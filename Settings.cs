@@ -10,7 +10,6 @@ namespace StatsOSD
         public bool ClickThrough { get; set; } = true;
         public int BackgroundAlpha { get; set; } = 90; // 0-100：面板背景不透明度（%）
         public bool ForceTopmost { get; set; } = false; // 强制顶层：定时重新抢占 Z 序
-        public bool ShowInTaskbar { get; set; } = false; // 小图标位置：true=任务栏，false=仅托盘
 
         private static string DirPath
         {

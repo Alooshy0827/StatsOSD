@@ -17,7 +17,6 @@ namespace StatsOSD
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_TRANSPARENT = 0x00000020;
         private const int WS_EX_NOACTIVATE = 0x08000000;
-        private const int WS_EX_APPWINDOW = 0x00040000;
 
         private const int HWND_TOPMOST = -1;
         private const uint SWP_NOSIZE = 0x0001;
@@ -102,32 +101,10 @@ namespace StatsOSD
             IntPtr h = new WindowInteropHelper(this).Handle;
             if (h == IntPtr.Zero) return;
             int ex = GetWindowLong(h, GWL_EXSTYLE);
-            ex |= WS_EX_NOACTIVATE;
-            if (ShowInTaskbar)
-            {
-                ex &= ~WS_EX_TOOLWINDOW;   // 允许在任务栏出现
-                ex |= WS_EX_APPWINDOW;
-            }
-            else
-            {
-                ex |= WS_EX_TOOLWINDOW;    // 仅托盘，不占任务栏
-                ex &= ~WS_EX_APPWINDOW;
-            }
+            ex |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
             if (_passthrough) ex |= WS_EX_TRANSPARENT;
             else ex &= ~WS_EX_TRANSPARENT;
             SetWindowLong(h, GWL_EXSTYLE, ex);
-        }
-
-        /// <summary>小图标位置：true = 任务栏显示窗口图标；false = 仅托盘</summary>
-        public void SetShowInTaskbar(bool on)
-        {
-            if (ShowInTaskbar == on) { ApplyStyle(); return; }
-            bool wasVisible = IsVisible;
-            if (wasVisible) Hide();
-            ShowInTaskbar = on;
-            ApplyStyle();
-            if (wasVisible) { Show(); ApplyCorner(); }
-            App.Log("show in taskbar = " + on);
         }
 
         protected override void OnContentRendered(EventArgs e)
