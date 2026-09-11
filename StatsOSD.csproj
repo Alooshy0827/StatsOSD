@@ -12,6 +12,13 @@
     <PlatformTarget>x64</PlatformTarget>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- 版本与版权（显示在 exe 属性页、文件版本、产品版本） -->
+    <Version>1.0.0</Version>
+    <Product>StatsOSD</Product>
+    <Company>Alooshy0827</Company>
+    <Copyright>Copyright (C) 2026 Alooshy0827. All rights reserved.</Copyright>
+    <Description>CPU/GPU 温度、功耗、负载 OSD 监控面板</Description>
   </PropertyGroup>
 
   <ItemGroup>
