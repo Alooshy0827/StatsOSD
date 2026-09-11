@@ -5,12 +5,6 @@ using LibreHardwareMonitor.Hardware;
 
 namespace StatsOSD
 {
-    public sealed class CoreTemp
-    {
-        public string Name;
-        public double Temp;
-    }
-
     public sealed class Sample
     {
         public double? CpuTemp;
@@ -19,7 +13,6 @@ namespace StatsOSD
         public double? GpuTemp;
         public double? GpuLoad;
         public double? GpuPower;
-        public List<CoreTemp> Cores = new List<CoreTemp>();
         public string Warn;
 
         public bool HasAny
@@ -92,7 +85,6 @@ namespace StatsOSD
                 if (r.CpuTemp == null) r.CpuTemp = PickTemp(cpu, "CPU");
                 if (r.CpuLoad == null) r.CpuLoad = PickLoad(cpu, "CPU");
                 if (r.CpuPower == null) r.CpuPower = PickPower(cpu, "CPU");
-                if (r.Cores.Count == 0) r.Cores.AddRange(PickCores(cpu, 12));
                 if (r.CpuTemp.HasValue && r.CpuLoad.HasValue && r.CpuPower.HasValue) break;
             }
 
@@ -110,7 +102,7 @@ namespace StatsOSD
                     ? "等待传感器数据…"
                     : "未读到传感器：请以管理员身份重启";
             }
-            else if (!r.CpuTemp.HasValue && !r.Cores.Any() && !App.IsAdmin())
+            else if (!r.CpuTemp.HasValue && !App.IsAdmin())
             {
                 r.Warn = "CPU 温度需管理员权限（托盘重启）";
             }
@@ -226,21 +218,6 @@ namespace StatsOSD
                 if (hit != null) return hit.Value;
             }
             return loads.Max(s => s.Value.Value);
-        }
-
-        private static IEnumerable<CoreTemp> PickCores(IHardware hw, int maxCount)
-        {
-            var list = hw.Sensors
-                .Where(s => s.SensorType == SensorType.Temperature && s.Value.HasValue)
-                .Where(s => s.Name.StartsWith("Core", StringComparison.OrdinalIgnoreCase))
-                .Where(s => !s.Name.Contains("Max", StringComparison.OrdinalIgnoreCase))
-                .Where(s => !s.Name.Contains("Average", StringComparison.OrdinalIgnoreCase))
-                .Where(s => !s.Name.Contains("Package", StringComparison.OrdinalIgnoreCase))
-                .Select(s => new CoreTemp { Name = s.Name.Replace("#", "C"), Temp = s.Value.Value })
-                .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-                .Take(maxCount)
-                .ToList();
-            return list;
         }
 
         public void Close()

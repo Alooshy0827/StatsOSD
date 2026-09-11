@@ -24,10 +24,10 @@ namespace StatsOSD
 
         private WF.ToolStripMenuItem _miVisible;
         private WF.ToolStripMenuItem _miPassthru;
-        private WF.ToolStripMenuItem _miCores;
         private WF.ToolStripMenuItem _miTopmost;
         private WF.ToolStripMenuItem _miAutoStart;
         private readonly WF.ToolStripMenuItem[] _miCorner = new WF.ToolStripMenuItem[4];
+        private readonly WF.ToolStripMenuItem[] _miIconPlace = new WF.ToolStripMenuItem[2];
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -38,13 +38,14 @@ namespace StatsOSD
             _demo = HasFlag(e.Args, "--demo");
             BuildTray();
 
-            _overlay = new OverlayWindow { ShowCores = _cfg.ShowCores };
+            _overlay = new OverlayWindow();
             _overlay.SetPassthrough(_cfg.ClickThrough);
             _overlay.SetBackgroundAlpha(_cfg.BackgroundAlpha);
             _overlay.IsVisibleChanged += (s, a) => { if (_miVisible != null) _miVisible.Text = _overlay.IsVisible ? "隐藏 OSD" : "显示 OSD"; };
             _overlay.Show();
             _overlay.CornerIndex = _cfg.Corner;
             _overlay.SetForceTopmost(_cfg.ForceTopmost);
+            _overlay.SetShowInTaskbar(_cfg.ShowInTaskbar);
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += OnTick;
@@ -150,10 +151,10 @@ namespace StatsOSD
             return false;
         }
 
-        /// <summary>演示/自检用合成数据：CPU 85（应为橙）、GPU 90（应为红），核心含白/橙/红三档</summary>
+        /// <summary>演示/自检用合成数据：CPU 85（应为橙）、GPU 90（应为红）</summary>
         private Sample MakeDemoSample()
         {
-            var s = new Sample
+            return new Sample
             {
                 CpuTemp = 85,
                 CpuLoad = 42,
@@ -162,10 +163,6 @@ namespace StatsOSD
                 GpuLoad = 76,
                 GpuPower = 165
             };
-            s.Cores.Add(new CoreTemp { Name = "C1", Temp = 72 });
-            s.Cores.Add(new CoreTemp { Name = "C2", Temp = 84 });
-            s.Cores.Add(new CoreTemp { Name = "C3", Temp = 93 });
-            return s;
         }
 
         private void OnDisplayChanged(object sender, EventArgs e)
@@ -187,7 +184,7 @@ namespace StatsOSD
             {
                 _sawData = true;
                 App.Log(string.Format("sample ok: cpuTemp={0} cpuLoad={1} gpuTemp={2} gpuLoad={3} cores={4}",
-                    s.CpuTemp, s.CpuLoad, s.GpuTemp, s.GpuLoad, s.Cores.Count));
+                    s.CpuTemp, s.CpuLoad, s.GpuTemp, s.GpuLoad));
             }
 
             string tip = s.CpuTemp.HasValue ? "CPU " + s.CpuTemp.Value.ToString("0") + "\u00B0C" : "CPU --";
@@ -217,6 +214,18 @@ namespace StatsOSD
                 miPos.DropDownItems.Add(_miCorner[i]);
             }
             menu.Items.Add(miPos);
+
+            // 小图标位置（悬停二级菜单）：托盘 / 任务栏
+            var miIcon = new WF.ToolStripMenuItem("小图标位置");
+            string[] places = { "托盘（通知区域）", "任务栏" };
+            for (int i = 0; i < 2; i++)
+            {
+                int k = i;
+                _miIconPlace[i] = new WF.ToolStripMenuItem(places[i], null, (s, e) => SetIconPlacement(k));
+                miIcon.DropDownItems.Add(_miIconPlace[i]);
+            }
+            menu.Items.Add(miIcon);
+
             Add(menu, "背景透明度…", (s, e) => OpenBgWindow());
 
             menu.Items.Add(new WF.ToolStripSeparator());
@@ -224,8 +233,6 @@ namespace StatsOSD
             // ── 组 3：单纯开关（开机自启固定放这一组最后）──
             _miPassthru = Add(menu, "鼠标穿透（不挡游戏操作）", (s, e) => TogglePassthrough());
             _miPassthru.CheckOnClick = true;
-            _miCores = Add(menu, "显示每核心温度", (s, e) => ToggleCores());
-            _miCores.CheckOnClick = true;
             _miTopmost = Add(menu, "强制顶层显示（压制其他置顶窗口）", (s, e) => ToggleForceTopmost());
             _miTopmost.CheckOnClick = true;
             _miAutoStart = Add(menu, "开机自启", (s, e) => ToggleAutoStart());
@@ -255,10 +262,10 @@ namespace StatsOSD
             _tray.DoubleClick += (s, e) => ToggleVisible();
 
             _miPassthru.Checked = _cfg.ClickThrough;
-            _miCores.Checked = _cfg.ShowCores;
             _miTopmost.Checked = _cfg.ForceTopmost;
             _miAutoStart.Checked = AutoStart.IsEnabled();
             SyncCornerChecks();
+            SyncIconPlaceChecks();
         }
 
         private WF.ToolStripMenuItem Add(WF.ContextMenuStrip m, string text, EventHandler handler)
@@ -271,6 +278,29 @@ namespace StatsOSD
         private void SyncCornerChecks()
         {
             for (int i = 0; i < 4; i++) _miCorner[i].Checked = _cfg.Corner == i;
+        }
+
+        private void SyncIconPlaceChecks()
+        {
+            int cur = _cfg.ShowInTaskbar ? 1 : 0;
+            for (int i = 0; i < 2; i++) _miIconPlace[i].Checked = i == cur;
+        }
+
+        private void SetIconPlacement(int k)
+        {
+            _cfg.ShowInTaskbar = k == 1;
+            _cfg.Save();
+            _overlay?.SetShowInTaskbar(_cfg.ShowInTaskbar);
+            SyncIconPlaceChecks();
+            try
+            {
+                _tray.ShowBalloonTip(2500, "StatsOSD",
+                    _cfg.ShowInTaskbar
+                        ? "已在任务栏显示窗口图标（托盘图标保留，用于打开设置菜单）"
+                        : "小图标已回到托盘（不占用任务栏）",
+                    WF.ToolTipIcon.Info);
+            }
+            catch { }
         }
 
         private void ToggleVisible()
@@ -292,13 +322,6 @@ namespace StatsOSD
             _cfg.ClickThrough = _miPassthru.Checked;
             _cfg.Save();
             _overlay?.SetPassthrough(_cfg.ClickThrough);
-        }
-
-        private void ToggleCores()
-        {
-            _cfg.ShowCores = _miCores.Checked;
-            _cfg.Save();
-            if (_overlay != null) _overlay.ShowCores = _cfg.ShowCores;
         }
 
         private void ToggleForceTopmost()

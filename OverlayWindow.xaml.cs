@@ -17,6 +17,7 @@ namespace StatsOSD
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_TRANSPARENT = 0x00000020;
         private const int WS_EX_NOACTIVATE = 0x08000000;
+        private const int WS_EX_APPWINDOW = 0x00040000;
 
         private const int HWND_TOPMOST = -1;
         private const uint SWP_NOSIZE = 0x0001;
@@ -28,14 +29,11 @@ namespace StatsOSD
         private bool _passthrough = true;
         private int _corner = 1;   // 0左上 1右上 2左下 3右下
         private bool _positioning;
-        private readonly List<TextBlock> _coreCells = new List<TextBlock>();
 
         private static readonly SolidColorBrush BrHot = MakeBrush("#FFFF5B5B");
         private static readonly SolidColorBrush BrWarm = MakeBrush("#FFFFB04D");
         private static readonly SolidColorBrush BrCool = MakeBrush("#FFE8E8F0");
         private static readonly SolidColorBrush BrGray = MakeBrush("#FF9A9AA8");
-
-        public bool ShowCores { get; set; } = true;
 
         public int CornerIndex
         {
@@ -104,10 +102,32 @@ namespace StatsOSD
             IntPtr h = new WindowInteropHelper(this).Handle;
             if (h == IntPtr.Zero) return;
             int ex = GetWindowLong(h, GWL_EXSTYLE);
-            ex |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            ex |= WS_EX_NOACTIVATE;
+            if (ShowInTaskbar)
+            {
+                ex &= ~WS_EX_TOOLWINDOW;   // 允许在任务栏出现
+                ex |= WS_EX_APPWINDOW;
+            }
+            else
+            {
+                ex |= WS_EX_TOOLWINDOW;    // 仅托盘，不占任务栏
+                ex &= ~WS_EX_APPWINDOW;
+            }
             if (_passthrough) ex |= WS_EX_TRANSPARENT;
             else ex &= ~WS_EX_TRANSPARENT;
             SetWindowLong(h, GWL_EXSTYLE, ex);
+        }
+
+        /// <summary>小图标位置：true = 任务栏显示窗口图标；false = 仅托盘</summary>
+        public void SetShowInTaskbar(bool on)
+        {
+            if (ShowInTaskbar == on) { ApplyStyle(); return; }
+            bool wasVisible = IsVisible;
+            if (wasVisible) Hide();
+            ShowInTaskbar = on;
+            ApplyStyle();
+            if (wasVisible) { Show(); ApplyCorner(); }
+            App.Log("show in taskbar = " + on);
         }
 
         protected override void OnContentRendered(EventArgs e)
@@ -151,9 +171,6 @@ namespace StatsOSD
             GpuLoad.Text = s.GpuLoad.HasValue ? "负载 " + s.GpuLoad.Value.ToString("0") + "%" : "负载 --";
             GpuPower.Text = s.GpuPower.HasValue ? s.GpuPower.Value.ToString("0") + "W" : "--";
 
-            // 每核心
-            UpdateCores(s);
-
             // 提示
             if (!string.IsNullOrEmpty(s.Warn))
             {
@@ -163,42 +180,6 @@ namespace StatsOSD
             else
             {
                 Warn.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        private void UpdateCores(Sample s)
-        {
-            if (!ShowCores || s.Cores.Count == 0)
-            {
-                if (_coreCells.Count > 0)
-                {
-                    _coreCells.Clear();
-                    CoresPanel.Children.Clear();
-                }
-                CoresPanel.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            CoresPanel.Visibility = Visibility.Visible;
-
-            if (_coreCells.Count != s.Cores.Count)
-            {
-                _coreCells.Clear();
-                CoresPanel.Children.Clear();
-                for (int i = 0; i < s.Cores.Count; i++)
-                {
-                    var cell = new TextBlock();
-                    _coreCells.Add(cell);
-                    CoresPanel.Children.Add(cell);
-                }
-            }
-
-            for (int i = 0; i < s.Cores.Count; i++)
-            {
-                CoreTemp c = s.Cores[i];
-                TextBlock cell = _coreCells[i];
-                cell.Text = c.Name + " " + c.Temp.ToString("0") + "\u00B0";
-                cell.Foreground = Severity(c.Temp, false);
             }
         }
 
