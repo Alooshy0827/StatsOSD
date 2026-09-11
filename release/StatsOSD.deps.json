@@ -6,12 +6,12 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "CpuHud/1.0.0": {
+      "StatsOSD/1.0.0": {
         "dependencies": {
           "LibreHardwareMonitorLib": "0.9.4.0"
         },
         "runtime": {
-          "CpuHud.dll": {}
+          "StatsOSD.dll": {}
         }
       },
       "LibreHardwareMonitorLib/0.9.4.0": {
@@ -25,7 +25,7 @@
     }
   },
   "libraries": {
-    "CpuHud/1.0.0": {
+    "StatsOSD/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
