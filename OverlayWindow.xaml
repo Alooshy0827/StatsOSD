@@ -70,6 +70,11 @@
             <!-- 状态提示 -->
             <TextBlock x:Name="Warn" TextWrapping="Wrap" FontFamily="Microsoft YaHei UI" FontSize="11"
                        Foreground="#FFFFB04D" Margin="0,5,0,0" Visibility="Collapsed" />
+
+            <!-- 拖动模式提示 -->
+            <TextBlock x:Name="DragHint" TextWrapping="Wrap" FontFamily="Microsoft YaHei UI" FontSize="10.5"
+                       Foreground="#FF7FD4FF" Margin="0,5,0,0" Visibility="Collapsed"
+                       Text="拖动调整位置" />
         </StackPanel>
     </Border>
 </Window>

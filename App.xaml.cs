@@ -43,7 +43,15 @@ namespace StatsOSD
             _overlay.SetBackgroundAlpha(_cfg.BackgroundAlpha);
             _overlay.IsVisibleChanged += (s, a) => { if (_miVisible != null) _miVisible.Text = _overlay.IsVisible ? "隐藏 OSD" : "显示 OSD"; };
             _overlay.Show();
-            _overlay.CornerIndex = _cfg.Corner;
+            if (string.Equals(_cfg.PositionMode, "free", StringComparison.OrdinalIgnoreCase) && _cfg.FreeX >= 0 && _cfg.FreeY >= 0)
+            {
+                _overlay.SetFreePosition(_cfg.FreeX, _cfg.FreeY);
+                Log("startup position: free " + _cfg.FreeX + "," + _cfg.FreeY);
+            }
+            else
+            {
+                _overlay.CornerIndex = _cfg.Corner;
+            }
             _overlay.SetForceTopmost(_cfg.ForceTopmost);
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -54,6 +62,14 @@ namespace StatsOSD
             else _sensors.Open();
 
             if (AutoStart.IsEnabled()) AutoStart.Sync();
+
+            // 拖动模式演示/自检：--drag  启动后自动进入拖动模式
+            if (HasFlag(e.Args, "--drag"))
+            {
+                var dragTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+                dragTimer.Tick += (s, a) => { dragTimer.Stop(); StartDragMode(); };
+                dragTimer.Start();
+            }
 
             SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
             Log("started, admin=" + IsAdmin());
@@ -202,8 +218,8 @@ namespace StatsOSD
             if (s.HasAny && !_sawData)
             {
                 _sawData = true;
-                App.Log(string.Format("sample ok: cpuTemp={0} cpuLoad={1} gpuTemp={2} gpuLoad={3} cores={4}",
-                    s.CpuTemp, s.CpuLoad, s.GpuTemp, s.GpuLoad));
+                App.Log(string.Format("sample ok: cpuTemp={0} cpuLoad={1} cpuPower={2} gpuTemp={3} gpuLoad={4} gpuPower={5}",
+                    s.CpuTemp, s.CpuLoad, s.CpuPower, s.GpuTemp, s.GpuLoad, s.GpuPower));
             }
 
             string tip = s.CpuTemp.HasValue ? "CPU " + s.CpuTemp.Value.ToString("0") + "\u00B0C" : "CPU --";
@@ -224,7 +240,7 @@ namespace StatsOSD
             menu.Items.Add(new WF.ToolStripSeparator());
 
             // ── 组 2：带二级菜单 / 二级窗口的设置 ──
-            var miPos = new WF.ToolStripMenuItem("面板位置");
+            var miPos = new WF.ToolStripMenuItem("预设面板位置");
             string[] names = { "左上角", "右上角", "左下角", "右下角" };
             for (int i = 0; i < 4; i++)
             {
@@ -233,6 +249,8 @@ namespace StatsOSD
                 miPos.DropDownItems.Add(_miCorner[i]);
             }
             menu.Items.Add(miPos);
+
+            Add(menu, "拖动调整位置", (s, e) => StartDragMode());
 
             // 小图标位置（悬停二级菜单）：托盘常显区 / 溢出区
             var miIcon = new WF.ToolStripMenuItem("图标位置");
@@ -290,7 +308,23 @@ namespace StatsOSD
 
         private void SyncCornerChecks()
         {
-            for (int i = 0; i < 4; i++) _miCorner[i].Checked = _cfg.Corner == i;
+            bool free = string.Equals(_cfg.PositionMode, "free", StringComparison.OrdinalIgnoreCase);
+            for (int i = 0; i < 4; i++) _miCorner[i].Checked = !free && _cfg.Corner == i;
+        }
+
+        /// <summary>进入拖动模式：临时解除鼠标穿透，自由拖动面板调整位置</summary>
+        private void StartDragMode()
+        {
+            _overlay.DragFinished = (x, y) =>
+            {
+                _cfg.PositionMode = "free";
+                _cfg.FreeX = (int)Math.Round(x);
+                _cfg.FreeY = (int)Math.Round(y);
+                _cfg.Save();
+                SyncCornerChecks();
+                Log("position saved (free): " + _cfg.FreeX + "," + _cfg.FreeY);
+            };
+            _overlay.SetDragMode(true);
         }
 
         private void SyncIconPlaceChecks()
@@ -353,6 +387,7 @@ namespace StatsOSD
 
         private void SetCorner(int k)
         {
+            _cfg.PositionMode = "corner";
             _cfg.Corner = k;
             _cfg.Save();
             if (_overlay != null) _overlay.CornerIndex = k;

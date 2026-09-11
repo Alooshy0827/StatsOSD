@@ -4,10 +4,12 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using WF = System.Windows.Forms;
 
 namespace StatsOSD
 {
@@ -33,11 +35,27 @@ namespace StatsOSD
         private static readonly SolidColorBrush BrWarm = MakeBrush("#FFFFB04D");
         private static readonly SolidColorBrush BrCool = MakeBrush("#FFE8E8F0");
         private static readonly SolidColorBrush BrGray = MakeBrush("#FF9A9AA8");
+        private static readonly SolidColorBrush BrDrag = MakeBrush("#FF4DD2FF");
+
+        // 自由拖动位置（纯自由拖动，无任何额外对齐行为）
+        private bool _freeMode;                 // 自由位置模式（不再自动贴角）
+        private bool _dragMode;                 // 拖动模式（临时解除鼠标穿透）
+        private bool _dragging;
+        private Point _dragCursorStart;         // 按下时的屏幕坐标（设备像素）
+        private double _dpiScaleX = 1, _dpiScaleY = 1;
+        private double _dragLeft, _dragTop;
+        private DispatcherTimer _dragTimeout;
+        private int _dragTimeoutSeconds;
+
+        /// <summary>拖动结束回调，参数为最终位置（DIP）</summary>
+        public Action<double, double> DragFinished { get; set; }
+
+        public bool IsDragMode { get { return _dragMode; } }
 
         public int CornerIndex
         {
             get { return _corner; }
-            set { _corner = value; ApplyCorner(); }
+            set { _corner = value; _freeMode = false; ApplyCorner(); }
         }
 
         public void SetPassthrough(bool on)
@@ -73,6 +91,130 @@ namespace StatsOSD
             IntPtr h = new WindowInteropHelper(this).Handle;
             if (h == IntPtr.Zero) return false;
             return SetWindowPos(h, new IntPtr(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+
+        // ---------- 自由拖动位置 ----------
+
+        /// <summary>进入/退出拖动模式（进入时临时解除鼠标穿透并高亮提示）</summary>
+        public void SetDragMode(bool on)
+        {
+            if (on == _dragMode) return;
+            _dragMode = on;
+
+            if (on)
+            {
+                _passthrough = false;               // 必须能接收鼠标才能拖
+                ApplyStyle();
+                DragHint.Visibility = Visibility.Visible;
+                Card.BorderBrush = BrDrag;
+                Card.BorderThickness = new Thickness(1.4);
+                Topmost = true;
+                _dragTimeoutSeconds = 0;
+                if (_dragTimeout == null)
+                {
+                    _dragTimeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    _dragTimeout.Tick += (s, e) =>
+                    {
+                        if (!_dragMode) { _dragTimeout.Stop(); return; }
+                        _dragTimeoutSeconds++;
+                        if (_dragTimeoutSeconds >= 20)
+                        {
+                            App.Log("drag mode auto-off (20s timeout)");
+                            SetDragMode(false);
+                        }
+                    };
+                }
+                _dragTimeout.Start();
+                App.Log("drag mode ON");
+            }
+            else
+            {
+                if (_dragging) { _dragging = false; ReleaseMouseCapture(); }
+                _passthrough = true;                // 恢复穿透（App 会再按配置设一次）
+                ApplyStyle();
+                DragHint.Visibility = Visibility.Collapsed;
+                Card.BorderBrush = null;
+                Card.BorderThickness = new Thickness(0);
+                if (_dragTimeout != null) _dragTimeout.Stop();
+                App.Log("drag mode OFF");
+            }
+        }
+
+        protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+        {
+            base.OnMouseLeftButtonDown(e);
+            if (!_dragMode) return;
+            _dragging = true;
+            // 用屏幕绝对坐标计算位移：不依赖窗口自身位置，避免拖动时的反馈震荡
+            _dragCursorStart = PointToScreen(e.GetPosition(this));
+            DpiScale dpi = VisualTreeHelper.GetDpi(this);
+            _dpiScaleX = dpi.DpiScaleX <= 0 ? 1 : dpi.DpiScaleX;
+            _dpiScaleY = dpi.DpiScaleY <= 0 ? 1 : dpi.DpiScaleY;
+            _dragLeft = Left;
+            _dragTop = Top;
+            _dragTimeoutSeconds = 0;
+            CaptureMouse();
+            e.Handled = true;
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (!_dragging) return;
+
+            // 纯自由拖动：按屏幕绝对坐标位移
+            Point cur = PointToScreen(e.GetPosition(this));
+            Left = _dragLeft + (cur.X - _dragCursorStart.X) / _dpiScaleX;
+            Top = _dragTop + (cur.Y - _dragCursorStart.Y) / _dpiScaleY;
+        }
+
+        protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseLeftButtonUp(e);
+            if (!_dragging) return;
+            _dragging = false;
+            ReleaseMouseCapture();
+            e.Handled = true;
+
+            _freeMode = true;
+            App.Log("drag end -> " + Left.ToString("0") + "," + Top.ToString("0"));
+            DragFinished?.Invoke(Left, Top);
+            SetDragMode(false);                     // 松手即退出拖动模式，恢复穿透
+        }
+
+        /// <summary>应用保存的自由位置（带有效性检查：完全在屏幕外则回退到左上角）</summary>
+        public void SetFreePosition(double x, double y)
+        {
+            _freeMode = true;
+            double w = ActualWidth > 0 ? ActualWidth : Width;
+            double h = ActualHeight > 0 ? ActualHeight : 64;
+
+            bool visible = false;
+            try
+            {
+                foreach (WF.Screen s in WF.Screen.AllScreens)
+                {
+                    System.Drawing.Rectangle b = s.Bounds;
+                    if (x < b.Right - 40 && x + w > b.Left + 40 && y < b.Bottom - 20 && y + h > b.Top + 20)
+                    {
+                        visible = true;
+                        break;
+                    }
+                }
+            }
+            catch { visible = true; }
+
+            if (!visible)
+            {
+                Rect wa = SystemParameters.WorkArea;
+                App.Log("free position " + x.ToString("0") + "," + y.ToString("0") + " off-screen -> fallback to top-left");
+                x = wa.Left + 14;
+                y = wa.Top + 14;
+            }
+
+            Left = x;
+            Top = y;
+            App.Log("free position applied: " + x.ToString("0") + "," + y.ToString("0"));
         }
 
         /// <summary>设置面板背景不透明度（0-100，只影响背景层，文字保持清晰）</summary>
@@ -115,6 +257,7 @@ namespace StatsOSD
 
         public void ApplyCorner()
         {
+            if (_freeMode) return;          // 自由位置模式：不自动贴角
             if (_positioning) return;
             _positioning = true;
             try
