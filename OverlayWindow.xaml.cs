@@ -36,7 +36,7 @@ namespace StatsOSD
         private static readonly SolidColorBrush BrWarm = MakeBrush("#FFFFB04D");
         private static readonly SolidColorBrush BrCool = MakeBrush("#FFE8E8F0");
         private static readonly SolidColorBrush BrGray = MakeBrush("#FF9A9AA8");
-        private static readonly SolidColorBrush BrLabel = MakeBrush("#FF8A94A6");
+        private static readonly SolidColorBrush BrLabel = MakeBrush("#FFA3ADBE");
         private static readonly SolidColorBrush BrUnit = MakeBrush("#FF78808F");
         private static readonly SolidColorBrush BrDrag = MakeBrush("#FF4DD2FF");
 
@@ -48,9 +48,9 @@ namespace StatsOSD
             var eff = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Colors.Black,
-                BlurRadius = 2.5,
+                BlurRadius = 1.5,      // 收紧：更硬的描边，而不是摊薄的柔光
                 ShadowDepth = 0,
-                Opacity = 0.95,
+                Opacity = 1.0,         // 全不透明
                 RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
             };
             eff.Freeze();
@@ -302,14 +302,20 @@ namespace StatsOSD
         private sealed class Cell
         {
             public MetricDef Def;
-            public TextBlock Value;
+            public OutlinedText Value;
             public bool ShowGroupLabel;      // mini 布局下把组标签画进同一格
         }
 
         private Settings _cfg;
         private readonly List<Cell> _cells = new List<Cell>();
 
-        /// <summary>按配置返回描边效果（关闭时返回 null）</summary>
+        /// <summary>文字描边画笔（关闭时返回 null）——由 OutlinedText 用几何轮廓描线实现</summary>
+        private Brush OutlineBrush
+        {
+            get { return (_cfg != null && _cfg.TextOutline) ? Brushes.Black : null; }
+        }
+
+        /// <summary>提示类文字（警告/拖动提示）仍用柔和阴影，避免与主数据抢眼</summary>
         private System.Windows.Media.Effects.Effect OutlineOrNull
         {
             get { return (_cfg != null && _cfg.TextOutline) ? OutlineEffect : null; }
@@ -373,14 +379,15 @@ namespace StatsOSD
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30 * Scale) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-                var label = new TextBlock
+                var label = new OutlinedText
                 {
                     Text = group[0].Group,
-                    FontFamily = new FontFamily(FontName),
+                    FontName = FontName,
                     FontSize = 11.5 * Scale,
                     FontWeight = FontWeights.Bold,
-                    Foreground = BrLabel,
-                    Effect = OutlineOrNull,
+                    TextBrush = BrLabel,
+                    StrokeBrush = OutlineBrush,
+                    StrokeThickness = 2.0 * Scale,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(label, 0);
@@ -392,14 +399,17 @@ namespace StatsOSD
                 foreach (MetricDef def in group)
                 {
                     bool primary = def.Style == MetricStyle.Primary;
-                    var tb = new TextBlock
+                    var tb = new OutlinedText
                     {
-                        FontFamily = new FontFamily(FontName),
+                        FontName = FontName,
                         FontSize = primary ? baseSize : baseSize * 0.63,
                         FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
-                        Foreground = BrCool,
-                        Effect = OutlineOrNull,
-                        TextAlignment = TextAlignment.Right,
+                        TextBrush = BrCool,
+                        SuffixBrush = BrUnit,
+                        StrokeBrush = OutlineBrush,
+                        StrokeThickness = 2.2 * Scale,
+                        SmallScale = primary ? 0.58 : 0.8,
+                        Alignment = TextAlignment.Right,
                         MinWidth = (primary ? 44 : 32) * Scale,
                         Margin = new Thickness(first ? 0 : 8 * Scale, 0, 0, 0),
                         VerticalAlignment = VerticalAlignment.Center
@@ -427,13 +437,16 @@ namespace StatsOSD
                 foreach (MetricDef d in group) { if (d.Style == MetricStyle.Primary) { def = d; break; } }
                 if (def == null) def = group[0];
 
-                var tb = new TextBlock
+                var tb = new OutlinedText
                 {
-                    FontFamily = new FontFamily(FontName),
+                    FontName = FontName,
                     FontSize = baseSize * 0.95,
                     FontWeight = FontWeights.Bold,
-                    Foreground = BrCool,
-                    Effect = OutlineOrNull,
+                    TextBrush = BrCool,
+                    SuffixBrush = BrUnit,
+                    StrokeBrush = OutlineBrush,
+                    StrokeThickness = 2.2 * Scale,
+                    SmallScale = 0.62,
                     Margin = new Thickness(first ? 0 : 12 * Scale, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 };
@@ -454,26 +467,30 @@ namespace StatsOSD
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84 * Scale) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-                var name = new TextBlock
+                var name = new OutlinedText
                 {
                     Text = def.Name,
-                    FontFamily = new FontFamily(FontName),
+                    FontName = FontName,
                     FontSize = 11.5 * Scale,
-                    Foreground = BrLabel,
-                    Effect = OutlineOrNull,
+                    TextBrush = BrLabel,
+                    StrokeBrush = OutlineBrush,
+                    StrokeThickness = 2.0 * Scale,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(name, 0);
 
                 bool primary = def.Style == MetricStyle.Primary;
-                var val = new TextBlock
+                var val = new OutlinedText
                 {
-                    FontFamily = new FontFamily(FontName),
+                    FontName = FontName,
                     FontSize = primary ? baseSize : baseSize * 0.78,
                     FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
-                    Foreground = BrCool,
-                    Effect = OutlineOrNull,
-                    TextAlignment = TextAlignment.Right,
+                    TextBrush = BrCool,
+                    SuffixBrush = BrUnit,
+                    StrokeBrush = OutlineBrush,
+                    StrokeThickness = 2.2 * Scale,
+                    SmallScale = 0.62,
+                    Alignment = TextAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(val, 1);
@@ -491,34 +508,12 @@ namespace StatsOSD
             foreach (Cell c in _cells)
             {
                 double? v = SafeGet(c.Def, s);
-                bool primary = c.Def.Style == MetricStyle.Primary;
-                double valueSize = (primary ? 19 : 19 * 0.63) * Scale;
-                if (_cfg != null && (_cfg.LayoutPreset ?? "").ToLowerInvariant() == "detailed" && !primary)
-                    valueSize = 19 * 0.78 * Scale;
-
-                c.Value.Inlines.Clear();
-                if (c.ShowGroupLabel)
-                {
-                    c.Value.Inlines.Add(new Run(c.Def.Group + " ")
-                    {
-                        FontSize = valueSize * 0.62,
-                        Foreground = BrLabel,
-                        FontWeight = FontWeights.Bold
-                    });
-                }
-                c.Value.Inlines.Add(new Run(Metrics.Format(c.Def, v))
-                {
-                    FontSize = valueSize,
-                    Foreground = ColorFor(c.Def, v)
-                });
-                if (v.HasValue && !string.IsNullOrEmpty(c.Def.Suffix))
-                {
-                    c.Value.Inlines.Add(new Run(c.Def.Suffix)
-                    {
-                        FontSize = valueSize * (primary ? 0.58 : 0.8),
-                        Foreground = BrUnit
-                    });
-                }
+                OutlinedText ot = c.Value;
+                ot.Prefix = c.ShowGroupLabel ? c.Def.Group + " " : "";
+                ot.Text = Metrics.Format(c.Def, v);
+                ot.Suffix = v.HasValue ? c.Def.Suffix : "";
+                ot.TextBrush = ColorFor(c.Def, v);
+                ot.SuffixBrush = BrUnit;
             }
 
             // 提示

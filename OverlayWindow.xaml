@@ -18,7 +18,7 @@
             Background="#E613131E"
             BorderThickness="0"
             Padding="10,7">
-        <StackPanel>
+        <StackPanel x:Name="ContentStack">
             <!-- 数据区：内容由配置动态生成（见 OverlayWindow.BuildContent） -->
             <StackPanel x:Name="RowsPanel" />
 
