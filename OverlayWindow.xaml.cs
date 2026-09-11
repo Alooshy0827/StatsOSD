@@ -106,11 +106,13 @@ namespace CpuHud
             CpuTemp.Text = s.CpuTemp.HasValue ? s.CpuTemp.Value.ToString("0") : "--";
             CpuTemp.Foreground = Severity(s.CpuTemp);
             CpuLoad.Text = s.CpuLoad.HasValue ? "负载 " + s.CpuLoad.Value.ToString("0") + "%" : "负载 --";
+            CpuPower.Text = s.CpuPower.HasValue ? s.CpuPower.Value.ToString("0") + "W" : "--";
 
             // GPU
             GpuTemp.Text = s.GpuTemp.HasValue ? s.GpuTemp.Value.ToString("0") : "--";
             GpuTemp.Foreground = Severity(s.GpuTemp);
             GpuLoad.Text = s.GpuLoad.HasValue ? "负载 " + s.GpuLoad.Value.ToString("0") + "%" : "负载 --";
+            GpuPower.Text = s.GpuPower.HasValue ? s.GpuPower.Value.ToString("0") + "W" : "--";
 
             // 每核心
             UpdateCores(s);

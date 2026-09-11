@@ -9,7 +9,7 @@
         ShowActivated="False"
         ResizeMode="NoResize"
         SizeToContent="Height"
-        Width="212"
+        Width="222"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
     <Border x:Name="Card"
@@ -18,11 +18,12 @@
             BorderThickness="0"
             Padding="12,9">
         <StackPanel>
-            <!-- 主数据区：三列网格，标签 / 温度（右对齐） / 负载（左对齐，数字起始位置固定） -->
+            <!-- 主数据区：四列网格，标签 / 温度(右对齐) / 负载(左对齐) / 功耗(左对齐) -->
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="36" />
-                    <ColumnDefinition Width="68" />
+                    <ColumnDefinition Width="30" />
+                    <ColumnDefinition Width="62" />
+                    <ColumnDefinition Width="62" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
@@ -42,7 +43,10 @@
                 </StackPanel>
                 <TextBlock Grid.Row="0" Grid.Column="2" x:Name="CpuLoad" Text="负载 --"
                            FontFamily="Consolas" FontSize="12" Foreground="#FF9AD4FF"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,3" />
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
+                <TextBlock Grid.Row="0" Grid.Column="3" x:Name="CpuPower" Text="--"
+                           FontFamily="Consolas" FontSize="12" Foreground="#FFD8B36A"
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
 
                 <!-- GPU 行 -->
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU"
@@ -57,14 +61,17 @@
                 </StackPanel>
                 <TextBlock Grid.Row="1" Grid.Column="2" x:Name="GpuLoad" Text="负载 --"
                            FontFamily="Consolas" FontSize="12" Foreground="#FFA7F3B0"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,3" />
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
+                <TextBlock Grid.Row="1" Grid.Column="3" x:Name="GpuPower" Text="--"
+                           FontFamily="Consolas" FontSize="12" Foreground="#FFD8B36A"
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
             </Grid>
 
             <!-- 每核心温度：等宽小格子，自动换行对齐 -->
             <WrapPanel x:Name="CoresPanel" Margin="0,8,0,0" Visibility="Collapsed">
                 <WrapPanel.Resources>
                     <Style TargetType="TextBlock">
-                        <Setter Property="Width" Value="54" />
+                        <Setter Property="Width" Value="48" />
                         <Setter Property="FontFamily" Value="Consolas" />
                         <Setter Property="FontSize" Value="11.5" />
                         <Setter Property="Margin" Value="0,0,0,2" />

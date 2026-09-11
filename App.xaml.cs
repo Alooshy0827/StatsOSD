@@ -51,7 +51,7 @@ namespace CpuHud
             Log("started, admin=" + IsAdmin());
 
             // 排版自检：--shot <png路径>  启动几秒后把面板渲染成图片并退出
-            string shotPath = ParseShotArg(e.Args);
+            string shotPath = ParseArg(e.Args, "--shot");
             if (shotPath != null)
             {
                 var shotTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -64,14 +64,29 @@ namespace CpuHud
                 };
                 shotTimer.Start();
             }
+
+            // 传感器排查：--dump <txt路径>  导出全部硬件/传感器后退出
+            string dumpPath = ParseArg(e.Args, "--dump");
+            if (dumpPath != null)
+            {
+                var dumpTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                dumpTimer.Tick += (s, a) =>
+                {
+                    dumpTimer.Stop();
+                    try { System.IO.File.WriteAllText(dumpPath, _sensors.DumpAll(), System.Text.Encoding.UTF8); Log("dump saved: " + dumpPath); }
+                    catch (Exception ex) { Log("dump error: " + ex.Message); }
+                    ExitApp();
+                };
+                dumpTimer.Start();
+            }
         }
 
-        private static string ParseShotArg(string[] args)
+        private static string ParseArg(string[] args, string name)
         {
             if (args == null) return null;
             for (int i = 0; i < args.Length - 1; i++)
             {
-                if (string.Equals(args[i], "--shot", StringComparison.OrdinalIgnoreCase)) return args[i + 1];
+                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase)) return args[i + 1];
             }
             return null;
         }
@@ -130,6 +145,7 @@ namespace CpuHud
             _miCores.CheckOnClick = true;
 
             Add(menu, "背景透明度…", (s, e) => OpenBgWindow());
+            Add(menu, "导出传感器清单", (s, e) => DumpSensorsToFile());
 
             menu.Items.Add(new WF.ToolStripSeparator());
 
@@ -221,6 +237,22 @@ namespace CpuHud
             catch (Exception)
             {
                 try { _tray.ShowBalloonTip(2000, "CpuHud", "已取消（未获得管理员权限）", WF.ToolTipIcon.Info); } catch { }
+            }
+        }
+
+        private void DumpSensorsToFile()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "cpuhud-sensors.txt");
+            try
+            {
+                File.WriteAllText(path, _sensors.DumpAll(), System.Text.Encoding.UTF8);
+                Log("sensors dumped: " + path);
+                try { _tray.ShowBalloonTip(2500, "CpuHud", "传感器清单已导出：\n" + path, WF.ToolTipIcon.Info); } catch { }
+            }
+            catch (Exception ex)
+            {
+                Log("dump error: " + ex.Message);
+                try { _tray.ShowBalloonTip(2500, "CpuHud", "导出失败：" + ex.Message, WF.ToolTipIcon.Warning); } catch { }
             }
         }
 

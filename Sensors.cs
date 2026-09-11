@@ -15,14 +15,16 @@ namespace CpuHud
     {
         public double? CpuTemp;
         public double? CpuLoad;
+        public double? CpuPower;
         public double? GpuTemp;
         public double? GpuLoad;
+        public double? GpuPower;
         public List<CoreTemp> Cores = new List<CoreTemp>();
         public string Warn;
 
         public bool HasAny
         {
-            get { return CpuTemp.HasValue || GpuTemp.HasValue || CpuLoad.HasValue || GpuLoad.HasValue; }
+            get { return CpuTemp.HasValue || GpuTemp.HasValue || CpuLoad.HasValue || GpuLoad.HasValue || CpuPower.HasValue || GpuPower.HasValue; }
         }
     }
 
@@ -89,15 +91,17 @@ namespace CpuHud
             {
                 if (r.CpuTemp == null) r.CpuTemp = PickTemp(cpu, "CPU");
                 if (r.CpuLoad == null) r.CpuLoad = PickLoad(cpu, "CPU");
-                if (r.Cores.Count == 0) r.Cores.AddRange(PickCores(cpu, 24));
-                if (r.CpuTemp.HasValue && r.CpuLoad.HasValue) break;
+                if (r.CpuPower == null) r.CpuPower = PickPower(cpu, "CPU");
+                if (r.Cores.Count == 0) r.Cores.AddRange(PickCores(cpu, 12));
+                if (r.CpuTemp.HasValue && r.CpuLoad.HasValue && r.CpuPower.HasValue) break;
             }
 
             foreach (IHardware gpu in _gpus)
             {
                 if (r.GpuTemp == null) r.GpuTemp = PickTemp(gpu, "GPU");
                 if (r.GpuLoad == null) r.GpuLoad = PickLoad(gpu, "GPU");
-                if (r.GpuTemp.HasValue && r.GpuLoad.HasValue) break;
+                if (r.GpuPower == null) r.GpuPower = PickPower(gpu, "GPU");
+                if (r.GpuTemp.HasValue && r.GpuLoad.HasValue && r.GpuPower.HasValue) break;
             }
 
             if (!r.HasAny)
@@ -161,6 +165,48 @@ namespace CpuHud
                 }
                 return temps.Max(s => s.Value.Value);
             }
+        }
+
+        private static double? PickPower(IHardware hw, string kind)
+        {
+            List<ISensor> powers = hw.Sensors
+                .Where(s => s.SensorType == SensorType.Power && s.Value.HasValue)
+                .ToList();
+            if (powers.Count == 0) return null;
+
+            string[] names = kind == "CPU"
+                ? new[] { "Package", "CPU Package", "Total", "Cores" }
+                : new[] { "GPU Power", "GPU", "Package", "Total" };
+
+            foreach (string pri in names)
+            {
+                ISensor hit = powers.FirstOrDefault(s => s.Name.Contains(pri, StringComparison.OrdinalIgnoreCase));
+                if (hit != null) return hit.Value;
+            }
+            return powers.Max(s => s.Value.Value);
+        }
+
+        /// <summary>导出全部硬件与传感器（排查"有没有功耗/每核心数据"用）</summary>
+        public string DumpAll()
+        {
+            var sb = new System.Text.StringBuilder();
+            if (_computer == null) return "(未初始化)";
+            try { RefreshAll(); } catch { }
+            sb.AppendLine("admin=" + App.IsAdmin());
+            foreach (IHardware hw in _computer.Hardware) DumpHardware(hw, 0, sb);
+            return sb.ToString();
+        }
+
+        private static void DumpHardware(IHardware hw, int depth, System.Text.StringBuilder sb)
+        {
+            string pad = new string(' ', depth * 2);
+            sb.AppendLine(pad + "[" + hw.HardwareType + "] " + hw.Name);
+            foreach (ISensor s in hw.Sensors)
+            {
+                string val = s.Value.HasValue ? s.Value.Value.ToString("0.##") : "n/a";
+                sb.AppendLine(pad + "   " + s.SensorType + " / " + s.Name + " = " + val);
+            }
+            foreach (IHardware sub in hw.SubHardware) DumpHardware(sub, depth + 1, sb);
         }
 
         private static double? PickLoad(IHardware hw, string kind)
