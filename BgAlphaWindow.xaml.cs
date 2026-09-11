@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 
-namespace CpuHud
+namespace StatsOSD
 {
     public partial class BgAlphaWindow : Window
     {

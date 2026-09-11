@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace CpuHud
+namespace StatsOSD
 {
     public sealed class Settings
     {
@@ -13,7 +13,7 @@ namespace CpuHud
 
         private static string DirPath
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CpuHud"); }
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StatsOSD"); }
         }
 
         private static string FilePath

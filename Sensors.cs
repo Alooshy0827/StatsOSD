@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LibreHardwareMonitor.Hardware;
 
-namespace CpuHud
+namespace StatsOSD
 {
     public sealed class CoreTemp
     {

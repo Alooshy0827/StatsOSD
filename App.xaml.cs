@@ -8,7 +8,7 @@ using Microsoft.Win32;
 using D = System.Drawing;
 using WF = System.Windows.Forms;
 
-namespace CpuHud
+namespace StatsOSD
 {
     public partial class App : Application
     {
@@ -122,7 +122,7 @@ namespace CpuHud
 
         private void BuildTray()
         {
-            _tray = new WF.NotifyIcon { Icon = IconFactory.Make(), Text = "CpuHud", Visible = true };
+            _tray = new WF.NotifyIcon { Icon = IconFactory.Make(), Text = "StatsOSD", Visible = true };
             var menu = new WF.ContextMenuStrip();
 
             _miVisible = Add(menu, "隐藏 OSD", (s, e) => ToggleVisible());
@@ -236,23 +236,23 @@ namespace CpuHud
             }
             catch (Exception)
             {
-                try { _tray.ShowBalloonTip(2000, "CpuHud", "已取消（未获得管理员权限）", WF.ToolTipIcon.Info); } catch { }
+                try { _tray.ShowBalloonTip(2000, "StatsOSD", "已取消（未获得管理员权限）", WF.ToolTipIcon.Info); } catch { }
             }
         }
 
         private void DumpSensorsToFile()
         {
-            string path = Path.Combine(Path.GetTempPath(), "cpuhud-sensors.txt");
+            string path = Path.Combine(Path.GetTempPath(), "statsosd-sensors.txt");
             try
             {
                 File.WriteAllText(path, _sensors.DumpAll(), System.Text.Encoding.UTF8);
                 Log("sensors dumped: " + path);
-                try { _tray.ShowBalloonTip(2500, "CpuHud", "传感器清单已导出：\n" + path, WF.ToolTipIcon.Info); } catch { }
+                try { _tray.ShowBalloonTip(2500, "StatsOSD", "传感器清单已导出：\n" + path, WF.ToolTipIcon.Info); } catch { }
             }
             catch (Exception ex)
             {
                 Log("dump error: " + ex.Message);
-                try { _tray.ShowBalloonTip(2500, "CpuHud", "导出失败：" + ex.Message, WF.ToolTipIcon.Warning); } catch { }
+                try { _tray.ShowBalloonTip(2500, "StatsOSD", "导出失败：" + ex.Message, WF.ToolTipIcon.Warning); } catch { }
             }
         }
 
@@ -286,7 +286,7 @@ namespace CpuHud
 
         public static void Log(string msg)
         {
-            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "cpuhud.log"), DateTime.Now.ToString("HH:mm:ss") + " " + msg + Environment.NewLine); } catch { }
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "statsosd.log"), DateTime.Now.ToString("HH:mm:ss") + " " + msg + Environment.NewLine); } catch { }
         }
     }
 

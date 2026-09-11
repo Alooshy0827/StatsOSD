@@ -1,4 +1,4 @@
-# CpuHud — CPU/GPU 温度 OSD（类似微星小飞机的监控叠加层）
+# StatsOSD — CPU/GPU 温度 OSD（类似微星小飞机的监控叠加层）
 
 透明置顶、鼠标穿透的深色小面板，常驻屏幕角落，实时显示：
 
@@ -9,10 +9,10 @@
 
 ## 运行
 
-双击 `CpuHud.exe`，或命令行：
+双击 `StatsOSD.exe`，或命令行：
 
 ```
-CpuHud.exe
+StatsOSD.exe
 ```
 
 > **重要**：读取 CPU 温度需要访问 CPU 的 MSR/底层传感器，
@@ -30,24 +30,24 @@ CpuHud.exe
 | 鼠标穿透（勾选） | 面板不挡游戏鼠标操作，默认开启 |
 | 显示每核心温度（勾选） | 是否显示各核心温度行 |
 | 背景透明度… | 弹出滑杆，实时调节面板背景不透明度（0% 纯文字 ~ 100% 全不透明） |
-| 导出传感器清单 | 把本机所有可用传感器导出到 `%TEMP%\cpuhud-sensors.txt`（排查"有没有功耗/每核心数据"用） |
+| 导出传感器清单 | 把本机所有可用传感器导出到 `%TEMP%\statsosd-sensors.txt`（排查"有没有功耗/每核心数据"用） |
 | 以管理员身份重新启动 | 一键提升权限重启，读取完整传感器 |
 | 退出 | 退出程序（OSD 是常驻进程，不是游戏结束后自动消失） |
 
-设置自动保存在 `%APPDATA%\CpuHud\settings.json`，日志在 `%TEMP%\cpuhud.log`。
+设置自动保存在 `%APPDATA%\StatsOSD\settings.json`，日志在 `%TEMP%\statsosd.log`。
 
 ## 命令行调试参数
 
 ```
-CpuHud.exe --shot D:\temp\panel.png    # 启动 3 秒后把面板自身渲染成 PNG 并退出（排版自检）
-CpuHud.exe --dump D:\temp\sensors.txt  # 导出全部硬件/传感器清单后退出
+StatsOSD.exe --shot D:\temp\panel.png    # 启动 3 秒后把面板自身渲染成 PNG 并退出（排版自检）
+StatsOSD.exe --dump D:\temp\sensors.txt  # 导出全部硬件/传感器清单后退出
 ```
 
 ## 构建（可选）
 
 ```
 dotnet build -c Release
-# 输出: bin\Release\net8.0-windows\CpuHud.exe
+# 输出: bin\Release\net8.0-windows\StatsOSD.exe
 ```
 
 依赖：本地 .NET 8 桌面运行时；传感器读取由 MIT/MPL 开源的
