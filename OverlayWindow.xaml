@@ -16,8 +16,7 @@
     <Border x:Name="Card"
             CornerRadius="10"
             Background="#E613131E"
-            BorderBrush="#99FF8A00"
-            BorderThickness="1.2"
+            BorderThickness="0"
             Padding="12,8">
         <StackPanel>
             <!-- CPU 行 -->
