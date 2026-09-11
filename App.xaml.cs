@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -22,6 +23,15 @@ namespace StatsOSD
         private bool _demo;
         private BgAlphaWindow _bgWin;
 
+        // 后台采样：采样跑在独立线程，界面只读缓存 —— 底层驱动卡住时界面不会跟着冻结
+        private System.Threading.Timer _sampler;
+        private volatile Sample _latest;
+        private long _lastSampleTicksUtc;
+        private int _sampling;
+        private bool _sensorsOpened;
+        private bool _stallLogged;
+        private System.Threading.Mutex _singleInstance;
+
         private WF.ToolStripMenuItem _miVisible;
         private WF.ToolStripMenuItem _miPassthru;
         private WF.ToolStripMenuItem _miTopmost;
@@ -33,6 +43,19 @@ namespace StatsOSD
         {
             base.OnStartup(e);
             DispatcherUnhandledException += (s, a) => { Log("unhandled: " + a.Exception); a.Handled = true; };
+
+            // 单实例保护：避免出现两个面板/两个托盘图标，以及重复加载传感器驱动
+            bool isNewInstance;
+            _singleInstance = new System.Threading.Mutex(true, "StatsOSD_SingleInstance", out isNewInstance);
+            if (!isNewInstance)
+            {
+                WF.MessageBox.Show("StatsOSD 已经在运行（请查看任务栏托盘图标）。", "StatsOSD",
+                    WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Information);
+                Shutdown();
+                return;
+            }
+
+            RotateLogIfNeeded();
 
             _cfg = Settings.Load();
             _demo = HasFlag(e.Args, "--demo");
@@ -55,11 +78,14 @@ namespace StatsOSD
             _overlay.SetForceTopmost(_cfg.ForceTopmost);
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _timer.Tick += OnTick;
+            _timer.Tick += OnTick;                  // UI 线程只负责把缓存的数据画出来
             _timer.Start();
 
             if (_demo) Log("demo mode: 使用合成数据（不读取真实传感器）");
-            else _sensors.Open();
+
+            // 采样在后台线程进行（每秒一次），界面永不因驱动调用而卡死
+            _sampler = new System.Threading.Timer(DoSample, null, 0, 1000);
+            Log("background sampler started");
 
             if (AutoStart.IsEnabled()) AutoStart.Sync();
 
@@ -97,7 +123,12 @@ namespace StatsOSD
                 dumpTimer.Tick += (s, a) =>
                 {
                     dumpTimer.Stop();
-                    try { System.IO.File.WriteAllText(dumpPath, _sensors.DumpAll(), System.Text.Encoding.UTF8); Log("dump saved: " + dumpPath); }
+                    try
+                    {
+                        if (!_sensorsOpened) { _sensors.Open(); _sensorsOpened = true; }
+                        System.IO.File.WriteAllText(dumpPath, _sensors.DumpAll(), System.Text.Encoding.UTF8);
+                        Log("dump saved: " + dumpPath);
+                    }
                     catch (Exception ex) { Log("dump error: " + ex.Message); }
                     ExitApp();
                 };
@@ -207,7 +238,39 @@ namespace StatsOSD
 
         private void OnTick(object sender, EventArgs e)
         {
-            Sample s = _demo ? MakeDemoSample() : _sensors.Sample();
+            Sample s = _latest;
+            if (s == null)
+            {
+                _overlay.Update(new Sample { Warn = "正在初始化传感器…" });
+                return;
+            }
+
+            // 看门狗：采样停滞超过 5 秒时明确提示，而不是让界面看起来"卡死"
+            double ageSec = (DateTime.UtcNow - new DateTime(Interlocked.Read(ref _lastSampleTicksUtc), DateTimeKind.Utc)).TotalSeconds;
+            if (ageSec > 5)
+            {
+                if (!_stallLogged)
+                {
+                    _stallLogged = true;
+                    Log("watchdog: sampling stalled for " + ageSec.ToString("0") + "s");
+                }
+                s = new Sample
+                {
+                    CpuTemp = s.CpuTemp,
+                    CpuLoad = s.CpuLoad,
+                    CpuPower = s.CpuPower,
+                    GpuTemp = s.GpuTemp,
+                    GpuLoad = s.GpuLoad,
+                    GpuPower = s.GpuPower,
+                    Warn = "传感器无响应（显示为最后已知值）"
+                };
+            }
+            else if (_stallLogged)
+            {
+                _stallLogged = false;
+                Log("watchdog: sampling recovered");
+            }
+
             _overlay.Update(s);
 
             if (s.Warn != _lastWarn)
@@ -225,6 +288,53 @@ namespace StatsOSD
             string tip = s.CpuTemp.HasValue ? "CPU " + s.CpuTemp.Value.ToString("0") + "\u00B0C" : "CPU --";
             tip += s.GpuTemp.HasValue ? "  GPU " + s.GpuTemp.Value.ToString("0") + "\u00B0C" : "  GPU --";
             try { if (tip.Length > 60) tip = tip.Substring(0, 60); _tray.Text = tip; } catch { }
+        }
+
+        /// <summary>后台采样线程：绝不阻塞 UI；上一次没返回（可能卡在驱动里）就跳过本次</summary>
+        private void DoSample(object state)
+        {
+            if (Interlocked.CompareExchange(ref _sampling, 1, 0) != 0) return;
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+
+                if (_demo)
+                {
+                    _latest = MakeDemoSample();
+                }
+                else
+                {
+                    if (!_sensorsOpened) { _sensors.Open(); _sensorsOpened = true; }
+                    _latest = _sensors.Sample();
+                }
+
+                Interlocked.Exchange(ref _lastSampleTicksUtc, DateTime.UtcNow.Ticks);
+                sw.Stop();
+                if (sw.ElapsedMilliseconds > 2000) Log("slow sample: " + sw.ElapsedMilliseconds + " ms");
+            }
+            catch (Exception ex)
+            {
+                Log("sample thread error: " + ex.Message);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _sampling, 0);
+            }
+        }
+
+        /// <summary>日志轮转：超过 512KB 归档为 .old，避免无限增长</summary>
+        private static void RotateLogIfNeeded()
+        {
+            try
+            {
+                string logPath = Path.Combine(Path.GetTempPath(), "statsosd.log");
+                if (!File.Exists(logPath)) return;
+                if (new FileInfo(logPath).Length < 512 * 1024) return;
+                string old = logPath + ".old";
+                if (File.Exists(old)) File.Delete(old);
+                File.Move(logPath, old);
+            }
+            catch { }
         }
 
         // ---------- tray ----------
@@ -485,9 +595,11 @@ namespace StatsOSD
         {
             try { _cfg.Save(); } catch { }
             try { _tray.Visible = false; _tray.Dispose(); } catch { }
+            try { _sampler?.Dispose(); } catch { }
             try { _timer?.Stop(); } catch { }
             try { _sensors.Close(); } catch { }
             try { _overlay?.Close(); } catch { }
+            try { _singleInstance?.ReleaseMutex(); } catch { }
             Shutdown();
         }
 

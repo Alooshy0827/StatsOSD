@@ -2,7 +2,7 @@
 
 <img src="assets/icon.png" width="88" alt="StatsOSD icon">
 
-**版本：v1.0.1** ｜ [下载最新版](https://github.com/Alooshy0827/StatsOSD/releases/latest) ｜ Windows 10/11 x64 ｜ [许可：专有软件](LICENSE)
+**版本：v1.1.0** ｜ [下载最新版](https://github.com/Alooshy0827/StatsOSD/releases/latest) ｜ Windows 10/11 x64 ｜ [许可：专有软件](LICENSE)
 
 透明置顶、鼠标穿透的硬件监控小面板，常驻屏幕角落，实时显示 CPU / GPU 的**温度、功耗、负载**（类似微星小飞机的监控叠加层）。
 
@@ -17,7 +17,7 @@
 
 ## 运行
 
-1. 解压 `StatsOSD-v1.0.1-win-x64.zip`，双击 `StatsOSD.exe`
+1. 解压 `StatsOSD-v1.1.0-win-x64.zip`，双击 `StatsOSD.exe`
 2. 需要 **.NET 8 桌面运行时**（[下载](https://dotnet.microsoft.com/download/dotnet/8.0)）
 3. 建议**以管理员身份运行**——CPU 温度与功耗需要底层传感器读取，程序会自动释放 `StatsOSD.sys`（仅用于读取硬件寄存器）
 
