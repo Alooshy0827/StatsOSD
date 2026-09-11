@@ -108,7 +108,7 @@ namespace CpuHud
             }
             else if (!r.CpuTemp.HasValue && !r.Cores.Any() && !App.IsAdmin())
             {
-                r.Warn = "CPU 温度需管理员权限（托盘菜单重启）";
+                r.Warn = "CPU 温度需管理员权限（托盘重启）";
             }
 
             return r;

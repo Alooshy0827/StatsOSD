@@ -9,7 +9,7 @@
         ShowActivated="False"
         ResizeMode="NoResize"
         SizeToContent="Height"
-        Width="248"
+        Width="212"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
     <Border x:Name="Card"
@@ -18,7 +18,7 @@
             BorderThickness="0"
             Padding="12,9">
         <StackPanel>
-            <!-- 主数据区：三列网格，标签 / 温度（右对齐） / 负载（右对齐） -->
+            <!-- 主数据区：三列网格，标签 / 温度（右对齐） / 负载（左对齐，数字起始位置固定） -->
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="36" />
@@ -42,7 +42,7 @@
                 </StackPanel>
                 <TextBlock Grid.Row="0" Grid.Column="2" x:Name="CpuLoad" Text="负载 --"
                            FontFamily="Consolas" FontSize="12" Foreground="#FF9AD4FF"
-                           TextAlignment="Right" VerticalAlignment="Bottom" Margin="8,0,0,3" />
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,3" />
 
                 <!-- GPU 行 -->
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU"
@@ -57,7 +57,7 @@
                 </StackPanel>
                 <TextBlock Grid.Row="1" Grid.Column="2" x:Name="GpuLoad" Text="负载 --"
                            FontFamily="Consolas" FontSize="12" Foreground="#FFA7F3B0"
-                           TextAlignment="Right" VerticalAlignment="Bottom" Margin="8,0,0,3" />
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,3" />
             </Grid>
 
             <!-- 每核心温度：等宽小格子，自动换行对齐 -->
