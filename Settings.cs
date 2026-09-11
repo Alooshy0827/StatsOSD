@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -13,6 +14,12 @@ namespace StatsOSD
         public string PositionMode { get; set; } = "corner"; // corner=贴角 | free=自由位置
         public int FreeX { get; set; } = -1;           // 自由位置 X（DIP，-1 表示未设置）
         public int FreeY { get; set; } = -1;           // 自由位置 Y
+
+        // ---- 显示内容与外观（阶段 A：内容 / 形式 / 字体 均可配置）----
+        public List<string> Metrics { get; set; } = new List<string>();  // 启用的指标 ID（顺序即显示顺序）；空 = 默认
+        public string LayoutPreset { get; set; } = "standard";           // mini | standard | detailed
+        public double FontScale { get; set; } = 1.0;                     // 全局字号缩放
+        public string FontFamily { get; set; } = "Consolas";             // 全局字体
 
         private static string DirPath
         {

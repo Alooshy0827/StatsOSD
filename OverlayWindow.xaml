@@ -8,8 +8,9 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         ResizeMode="NoResize"
-        SizeToContent="Height"
-        Width="208"
+        SizeToContent="WidthAndHeight"
+        MinWidth="120"
+        MaxWidth="560"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
     <Border x:Name="Card"
@@ -18,54 +19,8 @@
             BorderThickness="0"
             Padding="10,7">
         <StackPanel>
-            <!-- 主数据区：四列网格，标签 / 温度(右对齐) / 功耗(左对齐) / 负载(左对齐)，列间留空位区分 -->
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="28" />
-                    <ColumnDefinition Width="56" />
-                    <ColumnDefinition Width="40" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <!-- CPU 行 -->
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU"
-                           FontFamily="Consolas" FontSize="11.5" FontWeight="Bold"
-                           Foreground="#FF8A94A6" VerticalAlignment="Center" />
-                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <TextBlock x:Name="CpuTemp" Text="--" FontFamily="Consolas" FontSize="19" FontWeight="Bold"
-                               Foreground="#FFE8E8F0" />
-                    <TextBlock Text="°C" FontFamily="Consolas" FontSize="11" Foreground="#FF78808F"
-                               VerticalAlignment="Bottom" Margin="1,0,0,3" />
-                </StackPanel>
-                <TextBlock Grid.Row="0" Grid.Column="2" x:Name="CpuPower" Text="--"
-                           FontFamily="Consolas" FontSize="12" Foreground="#FFD8B36A"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="5,0,0,2" />
-                <TextBlock Grid.Row="0" Grid.Column="3" x:Name="CpuLoad" Text="负载 --"
-                           FontFamily="Consolas" FontSize="12" Foreground="#FF9AD4FF"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="5,0,0,2" />
-
-                <!-- GPU 行 -->
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU"
-                           FontFamily="Consolas" FontSize="11.5" FontWeight="Bold"
-                           Foreground="#FF8A94A6" VerticalAlignment="Center" Margin="0,2,0,0" />
-                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
-                            Margin="0,2,0,0">
-                    <TextBlock x:Name="GpuTemp" Text="--" FontFamily="Consolas" FontSize="19" FontWeight="Bold"
-                               Foreground="#FFE8E8F0" />
-                    <TextBlock Text="°C" FontFamily="Consolas" FontSize="11" Foreground="#FF78808F"
-                               VerticalAlignment="Bottom" Margin="1,0,0,3" />
-                </StackPanel>
-                <TextBlock Grid.Row="1" Grid.Column="2" x:Name="GpuPower" Text="--"
-                           FontFamily="Consolas" FontSize="12" Foreground="#FFD8B36A"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="5,0,0,2" />
-                <TextBlock Grid.Row="1" Grid.Column="3" x:Name="GpuLoad" Text="负载 --"
-                           FontFamily="Consolas" FontSize="12" Foreground="#FFA7F3B0"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="5,0,0,2" />
-            </Grid>
+            <!-- 数据区：内容由配置动态生成（见 OverlayWindow.BuildContent） -->
+            <StackPanel x:Name="RowsPanel" />
 
             <!-- 状态提示 -->
             <TextBlock x:Name="Warn" TextWrapping="Wrap" FontFamily="Microsoft YaHei UI" FontSize="11"

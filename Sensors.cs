@@ -10,14 +10,32 @@ namespace StatsOSD
         public double? CpuTemp;
         public double? CpuLoad;
         public double? CpuPower;
+        public double? CpuClock;
         public double? GpuTemp;
         public double? GpuLoad;
         public double? GpuPower;
+        public double? GpuHotspot;
+        public double? GpuClock;
+        public double? GpuVram;
+        public double? GpuFan;
+        public double? MemPercent;
+        public double? MemUsedGb;
         public string Warn;
 
         public bool HasAny
         {
-            get { return CpuTemp.HasValue || GpuTemp.HasValue || CpuLoad.HasValue || GpuLoad.HasValue || CpuPower.HasValue || GpuPower.HasValue; }
+            get
+            {
+                return CpuTemp.HasValue || GpuTemp.HasValue || CpuLoad.HasValue || GpuLoad.HasValue
+                    || CpuPower.HasValue || GpuPower.HasValue || CpuClock.HasValue || GpuHotspot.HasValue
+                    || GpuClock.HasValue || GpuVram.HasValue || GpuFan.HasValue || MemPercent.HasValue;
+            }
+        }
+
+        /// <summary>浅拷贝（UI 侧要在不改动采样缓存的前提下附加提示文字）</summary>
+        public Sample Clone()
+        {
+            return (Sample)MemberwiseClone();
         }
     }
 
@@ -85,7 +103,8 @@ namespace StatsOSD
                 if (r.CpuTemp == null) r.CpuTemp = PickTemp(cpu, "CPU");
                 if (r.CpuLoad == null) r.CpuLoad = PickLoad(cpu, "CPU");
                 if (r.CpuPower == null) r.CpuPower = PickPower(cpu, "CPU");
-                if (r.CpuTemp.HasValue && r.CpuLoad.HasValue && r.CpuPower.HasValue) break;
+                if (r.CpuClock == null) r.CpuClock = PickClock(cpu, "CPU");
+                if (r.CpuTemp.HasValue && r.CpuLoad.HasValue && r.CpuPower.HasValue && r.CpuClock.HasValue) break;
             }
 
             foreach (IHardware gpu in _gpus)
@@ -93,8 +112,17 @@ namespace StatsOSD
                 if (r.GpuTemp == null) r.GpuTemp = PickTemp(gpu, "GPU");
                 if (r.GpuLoad == null) r.GpuLoad = PickLoad(gpu, "GPU");
                 if (r.GpuPower == null) r.GpuPower = PickPower(gpu, "GPU");
-                if (r.GpuTemp.HasValue && r.GpuLoad.HasValue && r.GpuPower.HasValue) break;
+                if (r.GpuHotspot == null) r.GpuHotspot = PickNamedTemp(gpu, "Hot Spot");
+                if (r.GpuClock == null) r.GpuClock = PickClock(gpu, "GPU");
+                if (r.GpuVram == null) r.GpuVram = PickSmallData(gpu, "GPU Memory Used");
+                if (r.GpuFan == null) r.GpuFan = PickLoad(gpu, "Fan", "Fan");
+                if (r.GpuTemp.HasValue && r.GpuLoad.HasValue && r.GpuPower.HasValue
+                    && r.GpuHotspot.HasValue && r.GpuClock.HasValue && r.GpuVram.HasValue) break;
             }
+
+            double?[] mem = ReadMemory();
+            r.MemPercent = mem[0];
+            r.MemUsedGb = mem[1];
 
             if (!r.HasAny)
             {
@@ -176,6 +204,89 @@ namespace StatsOSD
                 if (hit != null) return hit.Value;
             }
             return powers.Max(s => s.Value.Value);
+        }
+
+        /// <summary>按名称取温度（如 GPU "Hot Spot"）</summary>
+        private static double? PickNamedTemp(IHardware hw, string namePart)
+        {
+            ISensor hit = hw.Sensors.FirstOrDefault(s =>
+                s.SensorType == SensorType.Temperature && s.Value.HasValue &&
+                s.Name.IndexOf(namePart, StringComparison.OrdinalIgnoreCase) >= 0);
+            return hit?.Value;
+        }
+
+        /// <summary>取频率（MHz）：CPU 优先 "CPU Core"/"Core #"，GPU 优先 "GPU Core"</summary>
+        private static double? PickClock(IHardware hw, string kind)
+        {
+            List<ISensor> clocks = hw.Sensors
+                .Where(s => s.SensorType == SensorType.Clock && s.Value.HasValue)
+                .ToList();
+            if (clocks.Count == 0) return null;
+
+            string[] names = kind == "CPU"
+                ? new[] { "CPU Core", "Cores", "Core #", "Core" }
+                : new[] { "GPU Core", "GPU", "Core" };
+
+            foreach (string pri in names)
+            {
+                ISensor hit = clocks.FirstOrDefault(s => s.Name.IndexOf(pri, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (hit != null) return hit.Value;
+            }
+            return clocks.Max(s => s.Value.Value);
+        }
+
+        /// <summary>按名称取 SmallData（如显存占用 "GPU Memory Used"，单位 MB）</summary>
+        private static double? PickSmallData(IHardware hw, string namePart)
+        {
+            ISensor hit = hw.Sensors.FirstOrDefault(s =>
+                s.SensorType == SensorType.SmallData && s.Value.HasValue &&
+                s.Name.IndexOf(namePart, StringComparison.OrdinalIgnoreCase) >= 0);
+            return hit?.Value;
+        }
+
+        /// <summary>按名称取占用率（如 GPU 风扇 "GPU Fan"）</summary>
+        private static double? PickLoad(IHardware hw, string kind, string namePart)
+        {
+            ISensor hit = hw.Sensors.FirstOrDefault(s =>
+                s.SensorType == SensorType.Load && s.Value.HasValue &&
+                s.Name.IndexOf(namePart, StringComparison.OrdinalIgnoreCase) >= 0);
+            return hit?.Value;
+        }
+
+        // ---------- 内存（Win32 API，比走 LHM 更快更准） ----------
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private class MEMORYSTATUSEX
+        {
+            public uint dwLength = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+            public uint dwMemoryLoad;
+            public ulong ullTotalPhys;
+            public ulong ullAvailPhys;
+            public ulong ullTotalPageFile;
+            public ulong ullAvailPageFile;
+            public ulong ullTotalVirtual;
+            public ulong ullAvailVirtual;
+            public ulong ullAvailExtendedVirtual;
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GlobalMemoryStatusEx(MEMORYSTATUSEX lpBuffer);
+
+        /// <summary>返回 [占用百分比, 已用 GB]</summary>
+        private static double?[] ReadMemory()
+        {
+            try
+            {
+                var st = new MEMORYSTATUSEX();
+                if (!GlobalMemoryStatusEx(st)) return new double?[] { null, null };
+                double totalGb = st.ullTotalPhys / 1024.0 / 1024.0 / 1024.0;
+                double usedGb = (st.ullTotalPhys - st.ullAvailPhys) / 1024.0 / 1024.0 / 1024.0;
+                return new double?[] { st.dwMemoryLoad, Math.Round(usedGb, 1) };
+            }
+            catch
+            {
+                return new double?[] { null, null };
+            }
         }
 
         /// <summary>导出全部硬件与传感器（排查"有没有功耗/每核心数据"用）</summary>

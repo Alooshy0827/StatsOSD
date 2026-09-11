@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -35,6 +36,8 @@ namespace StatsOSD
         private static readonly SolidColorBrush BrWarm = MakeBrush("#FFFFB04D");
         private static readonly SolidColorBrush BrCool = MakeBrush("#FFE8E8F0");
         private static readonly SolidColorBrush BrGray = MakeBrush("#FF9A9AA8");
+        private static readonly SolidColorBrush BrLabel = MakeBrush("#FF8A94A6");
+        private static readonly SolidColorBrush BrUnit = MakeBrush("#FF78808F");
         private static readonly SolidColorBrush BrDrag = MakeBrush("#FF4DD2FF");
 
         // 自由拖动位置（纯自由拖动，无任何额外对齐行为）
@@ -277,19 +280,216 @@ namespace StatsOSD
             finally { _positioning = false; }
         }
 
+        // ---------- 配置驱动的渲染（显示项 / 布局预设 / 全局字体） ----------
+
+        private sealed class Cell
+        {
+            public MetricDef Def;
+            public TextBlock Value;
+            public bool ShowGroupLabel;      // mini 布局下把组标签画进同一格
+        }
+
+        private Settings _cfg;
+        private readonly List<Cell> _cells = new List<Cell>();
+
+        /// <summary>应用配置并重建面板内容</summary>
+        public void ApplyConfig(Settings cfg)
+        {
+            _cfg = cfg;
+            BuildContent();
+        }
+
+        private double Scale
+        {
+            get { return (_cfg == null || _cfg.FontScale <= 0) ? 1.0 : _cfg.FontScale; }
+        }
+
+        private string FontName
+        {
+            get { return (_cfg == null || string.IsNullOrWhiteSpace(_cfg.FontFamily)) ? "Consolas" : _cfg.FontFamily; }
+        }
+
+        private void BuildContent()
+        {
+            RowsPanel.Children.Clear();
+            _cells.Clear();
+            if (_cfg == null) return;
+
+            List<MetricDef> metrics = Metrics.Resolve(_cfg.Metrics);
+            string preset = (_cfg.LayoutPreset ?? "standard").ToLowerInvariant();
+            double baseSize = 19 * Scale;
+
+            if (preset == "mini") BuildMini(metrics, baseSize);
+            else if (preset == "detailed") BuildDetailed(metrics, baseSize);
+            else BuildStandard(metrics, baseSize);
+        }
+
+        /// <summary>按出现顺序把指标分组（同组共用一个行标签）</summary>
+        private static List<List<MetricDef>> GroupByOrder(List<MetricDef> metrics)
+        {
+            var groups = new List<List<MetricDef>>();
+            foreach (MetricDef d in metrics)
+            {
+                List<MetricDef> g = null;
+                foreach (List<MetricDef> x in groups) { if (x[0].Group == d.Group) { g = x; break; } }
+                if (g == null) { g = new List<MetricDef>(); groups.Add(g); }
+                g.Add(d);
+            }
+            return groups;
+        }
+
+        /// <summary>标准布局：每组一行，行首是组标签，行内依次是各项数值</summary>
+        private void BuildStandard(List<MetricDef> metrics, double baseSize)
+        {
+            int rowIndex = 0;
+            foreach (List<MetricDef> group in GroupByOrder(metrics))
+            {
+                var grid = new Grid { Margin = new Thickness(0, rowIndex == 0 ? 0 : 2 * Scale, 0, 0) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30 * Scale) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var label = new TextBlock
+                {
+                    Text = group[0].Group,
+                    FontFamily = new FontFamily(FontName),
+                    FontSize = 11.5 * Scale,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = BrLabel,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(label, 0);
+
+                var values = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(values, 1);
+
+                bool first = true;
+                foreach (MetricDef def in group)
+                {
+                    bool primary = def.Style == MetricStyle.Primary;
+                    var tb = new TextBlock
+                    {
+                        FontFamily = new FontFamily(FontName),
+                        FontSize = primary ? baseSize : baseSize * 0.63,
+                        FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
+                        Foreground = BrCool,
+                        TextAlignment = TextAlignment.Right,
+                        MinWidth = (primary ? 44 : 32) * Scale,
+                        Margin = new Thickness(first ? 0 : 8 * Scale, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    _cells.Add(new Cell { Def = def, Value = tb });
+                    values.Children.Add(tb);
+                    first = false;
+                }
+
+                grid.Children.Add(label);
+                grid.Children.Add(values);
+                RowsPanel.Children.Add(grid);
+                rowIndex++;
+            }
+        }
+
+        /// <summary>迷你布局：单行，每组只显示主指标（温度），带组标签</summary>
+        private void BuildMini(List<MetricDef> metrics, double baseSize)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            bool first = true;
+            foreach (List<MetricDef> group in GroupByOrder(metrics))
+            {
+                MetricDef def = null;
+                foreach (MetricDef d in group) { if (d.Style == MetricStyle.Primary) { def = d; break; } }
+                if (def == null) def = group[0];
+
+                var tb = new TextBlock
+                {
+                    FontFamily = new FontFamily(FontName),
+                    FontSize = baseSize * 0.95,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = BrCool,
+                    Margin = new Thickness(first ? 0 : 12 * Scale, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                _cells.Add(new Cell { Def = def, Value = tb, ShowGroupLabel = true });
+                row.Children.Add(tb);
+                first = false;
+            }
+            RowsPanel.Children.Add(row);
+        }
+
+        /// <summary>详细布局：每个指标一行，左侧完整名称、右侧数值</summary>
+        private void BuildDetailed(List<MetricDef> metrics, double baseSize)
+        {
+            int rowIndex = 0;
+            foreach (MetricDef def in metrics)
+            {
+                var grid = new Grid { Margin = new Thickness(0, rowIndex == 0 ? 0 : 3 * Scale, 0, 0) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84 * Scale) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var name = new TextBlock
+                {
+                    Text = def.Name,
+                    FontFamily = new FontFamily(FontName),
+                    FontSize = 11.5 * Scale,
+                    Foreground = BrLabel,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(name, 0);
+
+                bool primary = def.Style == MetricStyle.Primary;
+                var val = new TextBlock
+                {
+                    FontFamily = new FontFamily(FontName),
+                    FontSize = primary ? baseSize : baseSize * 0.78,
+                    FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
+                    Foreground = BrCool,
+                    TextAlignment = TextAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(val, 1);
+
+                _cells.Add(new Cell { Def = def, Value = val });
+                grid.Children.Add(name);
+                grid.Children.Add(val);
+                RowsPanel.Children.Add(grid);
+                rowIndex++;
+            }
+        }
+
         public void Update(Sample s)
         {
-            // CPU
-            CpuTemp.Text = s.CpuTemp.HasValue ? s.CpuTemp.Value.ToString("0") : "--";
-            CpuTemp.Foreground = Severity(s.CpuTemp, false);
-            CpuLoad.Text = s.CpuLoad.HasValue ? "负载 " + s.CpuLoad.Value.ToString("0") + "%" : "负载 --";
-            CpuPower.Text = s.CpuPower.HasValue ? s.CpuPower.Value.ToString("0") + "W" : "--";
+            foreach (Cell c in _cells)
+            {
+                double? v = SafeGet(c.Def, s);
+                bool primary = c.Def.Style == MetricStyle.Primary;
+                double valueSize = (primary ? 19 : 19 * 0.63) * Scale;
+                if (_cfg != null && (_cfg.LayoutPreset ?? "").ToLowerInvariant() == "detailed" && !primary)
+                    valueSize = 19 * 0.78 * Scale;
 
-            // GPU
-            GpuTemp.Text = s.GpuTemp.HasValue ? s.GpuTemp.Value.ToString("0") : "--";
-            GpuTemp.Foreground = Severity(s.GpuTemp, true);
-            GpuLoad.Text = s.GpuLoad.HasValue ? "负载 " + s.GpuLoad.Value.ToString("0") + "%" : "负载 --";
-            GpuPower.Text = s.GpuPower.HasValue ? s.GpuPower.Value.ToString("0") + "W" : "--";
+                c.Value.Inlines.Clear();
+                if (c.ShowGroupLabel)
+                {
+                    c.Value.Inlines.Add(new Run(c.Def.Group + " ")
+                    {
+                        FontSize = valueSize * 0.62,
+                        Foreground = BrLabel,
+                        FontWeight = FontWeights.Bold
+                    });
+                }
+                c.Value.Inlines.Add(new Run(Metrics.Format(c.Def, v))
+                {
+                    FontSize = valueSize,
+                    Foreground = ColorFor(c.Def, v)
+                });
+                if (v.HasValue && !string.IsNullOrEmpty(c.Def.Suffix))
+                {
+                    c.Value.Inlines.Add(new Run(c.Def.Suffix)
+                    {
+                        FontSize = valueSize * (primary ? 0.58 : 0.8),
+                        Foreground = BrUnit
+                    });
+                }
+            }
 
             // 提示
             if (!string.IsNullOrEmpty(s.Warn))
@@ -301,6 +501,21 @@ namespace StatsOSD
             {
                 Warn.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private static double? SafeGet(MetricDef def, Sample s)
+        {
+            try { return def.Get(s); }
+            catch { return null; }
+        }
+
+        /// <summary>着色：温度按阈值分级，其余用指标自带颜色</summary>
+        private static SolidColorBrush ColorFor(MetricDef def, double? v)
+        {
+            if (!v.HasValue) return BrGray;
+            if (def.Kind == MetricKind.CpuTemp) return Severity(v, false);
+            if (def.Kind == MetricKind.GpuTemp) return Severity(v, true);
+            return MakeBrush(def.ColorHex);
         }
 
         /// <summary>把面板自身渲染成 PNG（排版自检用；叠加在中性底色上以便看清半透明效果）</summary>

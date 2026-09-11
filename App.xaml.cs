@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
@@ -37,6 +38,9 @@ namespace StatsOSD
         private WF.ToolStripMenuItem _miTopmost;
         private WF.ToolStripMenuItem _miAutoStart;
         private readonly WF.ToolStripMenuItem[] _miCorner = new WF.ToolStripMenuItem[4];
+        private readonly List<WF.ToolStripMenuItem> _miMetrics = new List<WF.ToolStripMenuItem>();
+        private readonly WF.ToolStripMenuItem[] _miLayout = new WF.ToolStripMenuItem[3];
+        private readonly WF.ToolStripMenuItem[] _miFont = new WF.ToolStripMenuItem[4];
         private readonly WF.ToolStripMenuItem[] _miIconPlace = new WF.ToolStripMenuItem[2];
 
         protected override void OnStartup(StartupEventArgs e)
@@ -62,6 +66,7 @@ namespace StatsOSD
             BuildTray();
 
             _overlay = new OverlayWindow();
+            _overlay.ApplyConfig(_cfg);
             _overlay.SetPassthrough(_cfg.ClickThrough);
             _overlay.SetBackgroundAlpha(_cfg.BackgroundAlpha);
             _overlay.IsVisibleChanged += (s, a) => { if (_miVisible != null) _miVisible.Text = _overlay.IsVisible ? "隐藏 OSD" : "显示 OSD"; };
@@ -225,9 +230,16 @@ namespace StatsOSD
                 CpuTemp = 85,
                 CpuLoad = 42,
                 CpuPower = 88,
+                CpuClock = 4380,
                 GpuTemp = 90,
                 GpuLoad = 76,
-                GpuPower = 165
+                GpuPower = 165,
+                GpuHotspot = 97,
+                GpuClock = 2415,
+                GpuVram = 6144,
+                GpuFan = 68,
+                MemPercent = 63,
+                MemUsedGb = 19.7
             };
         }
 
@@ -254,16 +266,8 @@ namespace StatsOSD
                     _stallLogged = true;
                     Log("watchdog: sampling stalled for " + ageSec.ToString("0") + "s");
                 }
-                s = new Sample
-                {
-                    CpuTemp = s.CpuTemp,
-                    CpuLoad = s.CpuLoad,
-                    CpuPower = s.CpuPower,
-                    GpuTemp = s.GpuTemp,
-                    GpuLoad = s.GpuLoad,
-                    GpuPower = s.GpuPower,
-                    Warn = "传感器无响应（显示为最后已知值）"
-                };
+                s = s.Clone();
+                s.Warn = "传感器无响应（显示为最后已知值）";
             }
             else if (_stallLogged)
             {
@@ -362,6 +366,48 @@ namespace StatsOSD
 
             Add(menu, "拖动调整位置", (s, e) => StartDragMode());
 
+            // 显示内容：按分组列出全部指标，勾选即显示
+            var miMetrics = new WF.ToolStripMenuItem("显示内容");
+            foreach (string grp in new[] { "CPU", "GPU", "内存" })
+            {
+                var g = new WF.ToolStripMenuItem(grp);
+                foreach (MetricDef def in Metrics.All)
+                {
+                    if (def.Group != grp) continue;
+                    var item = new WF.ToolStripMenuItem(def.Name, null, (s, e) => ToggleMetric((WF.ToolStripMenuItem)s));
+                    item.CheckOnClick = true;
+                    item.Tag = def.Id;
+                    _miMetrics.Add(item);
+                    g.DropDownItems.Add(item);
+                }
+                miMetrics.DropDownItems.Add(g);
+            }
+            menu.Items.Add(miMetrics);
+
+            // 布局预设
+            var miLayout = new WF.ToolStripMenuItem("布局预设");
+            string[] layoutNames = { "迷你", "标准", "详细" };
+            string[] layoutIds = { "mini", "standard", "detailed" };
+            for (int i = 0; i < 3; i++)
+            {
+                int k = i;
+                _miLayout[i] = new WF.ToolStripMenuItem(layoutNames[i], null, (s, e) => SetLayout(layoutIds[k]));
+                miLayout.DropDownItems.Add(_miLayout[i]);
+            }
+            menu.Items.Add(miLayout);
+
+            // 字体大小（全局缩放）
+            var miFont = new WF.ToolStripMenuItem("字体大小");
+            string[] fontNames = { "小", "中", "大", "特大" };
+            double[] fontScales = { 0.85, 1.0, 1.2, 1.4 };
+            for (int i = 0; i < 4; i++)
+            {
+                int k = i;
+                _miFont[i] = new WF.ToolStripMenuItem(fontNames[i], null, (s, e) => SetFontScale(fontScales[k]));
+                miFont.DropDownItems.Add(_miFont[i]);
+            }
+            menu.Items.Add(miFont);
+
             // 小图标位置（悬停二级菜单）：托盘常显区 / 溢出区
             var miIcon = new WF.ToolStripMenuItem("图标位置");
             string[] places = { "托盘常显区", "托盘溢出区（默认）" };
@@ -407,6 +453,75 @@ namespace StatsOSD
             _miAutoStart.Checked = AutoStart.IsEnabled();
             SyncCornerChecks();
             SyncIconPlaceChecks();
+            SyncMetricChecks();
+            SyncLayoutFontChecks();
+        }
+
+        /// <summary>已启用指标（配置为空时按默认项）</summary>
+        private List<string> CurrentMetrics()
+        {
+            return (_cfg.Metrics != null && _cfg.Metrics.Count > 0) ? _cfg.Metrics : Metrics.DefaultSelection();
+        }
+
+        private void SyncMetricChecks()
+        {
+            List<string> cur = CurrentMetrics();
+            foreach (WF.ToolStripMenuItem item in _miMetrics)
+            {
+                string id = item.Tag as string;
+                item.Checked = cur.Exists(x => string.Equals(x, id, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        private void SyncLayoutFontChecks()
+        {
+            string preset = (_cfg.LayoutPreset ?? "standard").ToLowerInvariant();
+            string[] ids = { "mini", "standard", "detailed" };
+            for (int i = 0; i < 3; i++) _miLayout[i].Checked = preset == ids[i];
+
+            double[] scales = { 0.85, 1.0, 1.2, 1.4 };
+            for (int i = 0; i < 4; i++) _miFont[i].Checked = Math.Abs(_cfg.FontScale - scales[i]) < 0.01;
+        }
+
+        private void ToggleMetric(WF.ToolStripMenuItem item)
+        {
+            string id = item.Tag as string;
+            if (string.IsNullOrEmpty(id)) return;
+
+            var list = new List<string>(CurrentMetrics());
+            if (item.Checked)
+            {
+                if (!list.Exists(x => string.Equals(x, id, StringComparison.OrdinalIgnoreCase))) list.Add(id);
+            }
+            else
+            {
+                list.RemoveAll(x => string.Equals(x, id, StringComparison.OrdinalIgnoreCase));
+            }
+            if (list.Count == 0) list = Metrics.DefaultSelection();   // 至少保留一项，避免空面板
+
+            _cfg.Metrics = list;
+            _cfg.Save();
+            _overlay.ApplyConfig(_cfg);
+            SyncMetricChecks();
+            Log("metrics -> " + string.Join(",", list));
+        }
+
+        private void SetLayout(string preset)
+        {
+            _cfg.LayoutPreset = preset;
+            _cfg.Save();
+            _overlay.ApplyConfig(_cfg);
+            SyncLayoutFontChecks();
+            Log("layout preset -> " + preset);
+        }
+
+        private void SetFontScale(double scale)
+        {
+            _cfg.FontScale = scale;
+            _cfg.Save();
+            _overlay.ApplyConfig(_cfg);
+            SyncLayoutFontChecks();
+            Log("font scale -> " + scale);
         }
 
         private WF.ToolStripMenuItem Add(WF.ContextMenuStrip m, string text, EventHandler handler)
