@@ -266,15 +266,8 @@ namespace StatsOSD
             menu.Items.Add(new WF.ToolStripSeparator());
 
             // ── 组 5：权限与退出 ──
-            if (IsAdmin())
-            {
-                var miAdmin = Add(menu, "已以管理员运行", null);
-                miAdmin.Enabled = false;
-            }
-            else
-            {
-                Add(menu, "以管理员重启", (s, e) => RestartAsAdmin());
-            }
+            // "以管理员重启"始终可用（已是管理员时点击＝以管理员权限重启一次）
+            Add(menu, "以管理员重启", (s, e) => RestartAsAdmin());
 
             Add(menu, "退出", (s, e) => ExitApp());
 
@@ -411,6 +404,8 @@ namespace StatsOSD
 
         private void RestartAsAdmin()
         {
+            bool wasAdmin = IsAdmin();
+            Log("restart as admin requested (currently admin=" + wasAdmin + ")");
             try
             {
                 var psi = new ProcessStartInfo
@@ -422,9 +417,16 @@ namespace StatsOSD
                 Process.Start(psi);
                 ExitApp();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                try { _tray.ShowBalloonTip(2000, "StatsOSD", "已取消（未获得管理员权限）", WF.ToolTipIcon.Info); } catch { }
+                Log("restart as admin failed/cancelled: " + ex.Message);
+                try
+                {
+                    _tray.ShowBalloonTip(2500, "StatsOSD",
+                        wasAdmin ? "重启未完成：" + ex.Message : "已取消（未获得管理员权限）",
+                        WF.ToolTipIcon.Info);
+                }
+                catch { }
             }
         }
 
