@@ -19,12 +19,14 @@ namespace StatsOSD
         private Settings _cfg;
         private string _lastWarn = "<init>";
         private bool _sawData;
+        private bool _demo;
         private BgAlphaWindow _bgWin;
 
         private WF.ToolStripMenuItem _miVisible;
         private WF.ToolStripMenuItem _miPassthru;
         private WF.ToolStripMenuItem _miCores;
         private WF.ToolStripMenuItem _miTopmost;
+        private WF.ToolStripMenuItem _miAutoStart;
         private readonly WF.ToolStripMenuItem[] _miCorner = new WF.ToolStripMenuItem[4];
 
         protected override void OnStartup(StartupEventArgs e)
@@ -33,6 +35,7 @@ namespace StatsOSD
             DispatcherUnhandledException += (s, a) => { Log("unhandled: " + a.Exception); a.Handled = true; };
 
             _cfg = Settings.Load();
+            _demo = HasFlag(e.Args, "--demo");
             BuildTray();
 
             _overlay = new OverlayWindow { ShowCores = _cfg.ShowCores };
@@ -47,7 +50,10 @@ namespace StatsOSD
             _timer.Tick += OnTick;
             _timer.Start();
 
-            _sensors.Open();
+            if (_demo) Log("demo mode: 使用合成数据（不读取真实传感器）");
+            else _sensors.Open();
+
+            if (AutoStart.IsEnabled()) AutoStart.Sync();
 
             SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
             Log("started, admin=" + IsAdmin());
@@ -82,6 +88,29 @@ namespace StatsOSD
                 dumpTimer.Start();
             }
 
+            // 自启管理：--autostart on|off|status  执行后退出（等价于托盘里的"开机自启"开关）
+            string asArg = ParseArg(e.Args, "--autostart");
+            if (asArg != null)
+            {
+                string how;
+                if (string.Equals(asArg, "on", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool ok = AutoStart.Enable(out how);
+                    Log("autostart on -> " + (ok ? "OK" : "FAIL") + " / " + how);
+                }
+                else if (string.Equals(asArg, "off", StringComparison.OrdinalIgnoreCase))
+                {
+                    AutoStart.Disable(out how);
+                    Log("autostart off -> " + how);
+                }
+                else
+                {
+                    Log("autostart status -> enabled=" + AutoStart.IsEnabled());
+                }
+                ExitApp();
+                return;
+            }
+
             // 图标自检：--iconshot <png路径>  导出实际使用的托盘图标后退出
             string iconPath = ParseArg(e.Args, "--iconshot");
             if (iconPath != null)
@@ -111,6 +140,34 @@ namespace StatsOSD
             return null;
         }
 
+        private static bool HasFlag(string[] args, string name)
+        {
+            if (args == null) return false;
+            foreach (string a in args)
+            {
+                if (string.Equals(a, name, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>演示/自检用合成数据：CPU 85（应为橙）、GPU 90（应为红），核心含白/橙/红三档</summary>
+        private Sample MakeDemoSample()
+        {
+            var s = new Sample
+            {
+                CpuTemp = 85,
+                CpuLoad = 42,
+                CpuPower = 88,
+                GpuTemp = 90,
+                GpuLoad = 76,
+                GpuPower = 165
+            };
+            s.Cores.Add(new CoreTemp { Name = "C1", Temp = 72 });
+            s.Cores.Add(new CoreTemp { Name = "C2", Temp = 84 });
+            s.Cores.Add(new CoreTemp { Name = "C3", Temp = 93 });
+            return s;
+        }
+
         private void OnDisplayChanged(object sender, EventArgs e)
         {
             _overlay?.ApplyCorner();
@@ -118,7 +175,7 @@ namespace StatsOSD
 
         private void OnTick(object sender, EventArgs e)
         {
-            Sample s = _sensors.Sample();
+            Sample s = _demo ? MakeDemoSample() : _sensors.Sample();
             _overlay.Update(s);
 
             if (s.Warn != _lastWarn)
@@ -145,10 +202,12 @@ namespace StatsOSD
             _tray = new WF.NotifyIcon { Icon = LoadAppIcon(), Text = "StatsOSD", Visible = true };
             var menu = new WF.ContextMenuStrip();
 
+            // ── 组 1：主操作 ──
             _miVisible = Add(menu, "隐藏 OSD", (s, e) => ToggleVisible());
 
             menu.Items.Add(new WF.ToolStripSeparator());
 
+            // ── 组 2：带二级菜单 / 二级窗口的设置 ──
             var miPos = new WF.ToolStripMenuItem("位置");
             string[] names = { "左上角", "右上角", "左下角", "右下角" };
             for (int i = 0; i < 4; i++)
@@ -158,20 +217,28 @@ namespace StatsOSD
                 miPos.DropDownItems.Add(_miCorner[i]);
             }
             menu.Items.Add(miPos);
+            Add(menu, "背景透明度…", (s, e) => OpenBgWindow());
 
+            menu.Items.Add(new WF.ToolStripSeparator());
+
+            // ── 组 3：单纯开关（开机自启固定放这一组最后）──
             _miPassthru = Add(menu, "鼠标穿透（不挡游戏操作）", (s, e) => TogglePassthrough());
             _miPassthru.CheckOnClick = true;
             _miCores = Add(menu, "显示每核心温度", (s, e) => ToggleCores());
             _miCores.CheckOnClick = true;
-
-            Add(menu, "背景透明度…", (s, e) => OpenBgWindow());
-            Add(menu, "导出传感器清单", (s, e) => DumpSensorsToFile());
-
             _miTopmost = Add(menu, "强制顶层显示（压制其他置顶窗口）", (s, e) => ToggleForceTopmost());
             _miTopmost.CheckOnClick = true;
+            _miAutoStart = Add(menu, "开机自启", (s, e) => ToggleAutoStart());
+            _miAutoStart.CheckOnClick = true;
 
             menu.Items.Add(new WF.ToolStripSeparator());
 
+            // ── 组 4：工具 ──
+            Add(menu, "导出传感器清单", (s, e) => DumpSensorsToFile());
+
+            menu.Items.Add(new WF.ToolStripSeparator());
+
+            // ── 组 5：权限与退出 ──
             if (IsAdmin())
             {
                 var miAdmin = Add(menu, "已以管理员身份运行（完整传感器）", null);
@@ -190,6 +257,7 @@ namespace StatsOSD
             _miPassthru.Checked = _cfg.ClickThrough;
             _miCores.Checked = _cfg.ShowCores;
             _miTopmost.Checked = _cfg.ForceTopmost;
+            _miAutoStart.Checked = AutoStart.IsEnabled();
             SyncCornerChecks();
         }
 
@@ -238,6 +306,22 @@ namespace StatsOSD
             _cfg.ForceTopmost = _miTopmost.Checked;
             _cfg.Save();
             _overlay?.SetForceTopmost(_cfg.ForceTopmost);
+        }
+
+        private void ToggleAutoStart()
+        {
+            bool want = _miAutoStart.Checked;
+            string how;
+            bool ok = want ? AutoStart.Enable(out how) : AutoStart.Disable(out how);
+            if (want && !ok) _miAutoStart.Checked = false;
+            Log("autostart toggle: want=" + want + " ok=" + ok + " how=" + how);
+            try
+            {
+                _tray.ShowBalloonTip(3500, "StatsOSD",
+                    (want ? (ok ? "已开启开机自启：" : "开启失败：") : "已关闭开机自启：") + how,
+                    ok ? WF.ToolTipIcon.Info : WF.ToolTipIcon.Warning);
+            }
+            catch { }
         }
 
         private void OpenBgWindow()

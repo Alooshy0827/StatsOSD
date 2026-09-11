@@ -141,13 +141,13 @@ namespace StatsOSD
         {
             // CPU
             CpuTemp.Text = s.CpuTemp.HasValue ? s.CpuTemp.Value.ToString("0") : "--";
-            CpuTemp.Foreground = Severity(s.CpuTemp);
+            CpuTemp.Foreground = Severity(s.CpuTemp, false);
             CpuLoad.Text = s.CpuLoad.HasValue ? "负载 " + s.CpuLoad.Value.ToString("0") + "%" : "负载 --";
             CpuPower.Text = s.CpuPower.HasValue ? s.CpuPower.Value.ToString("0") + "W" : "--";
 
             // GPU
             GpuTemp.Text = s.GpuTemp.HasValue ? s.GpuTemp.Value.ToString("0") : "--";
-            GpuTemp.Foreground = Severity(s.GpuTemp);
+            GpuTemp.Foreground = Severity(s.GpuTemp, true);
             GpuLoad.Text = s.GpuLoad.HasValue ? "负载 " + s.GpuLoad.Value.ToString("0") + "%" : "负载 --";
             GpuPower.Text = s.GpuPower.HasValue ? s.GpuPower.Value.ToString("0") + "W" : "--";
 
@@ -198,7 +198,7 @@ namespace StatsOSD
                 CoreTemp c = s.Cores[i];
                 TextBlock cell = _coreCells[i];
                 cell.Text = c.Name + " " + c.Temp.ToString("0") + "\u00B0";
-                cell.Foreground = Severity(c.Temp);
+                cell.Foreground = Severity(c.Temp, false);
             }
         }
 
@@ -226,12 +226,21 @@ namespace StatsOSD
             }
         }
 
-        private static SolidColorBrush Severity(double? t)
+        /// <summary>温度着色：CPU 80-89 橙 / ≥90 红；GPU 75-82 橙 / ≥83 红</summary>
+        private static SolidColorBrush Severity(double? t, bool isGpu)
         {
             if (!t.HasValue) return BrGray;
             double v = t.Value;
-            if (v >= 90) return BrHot;
-            if (v >= 75) return BrWarm;
+            if (isGpu)
+            {
+                if (v >= 83) return BrHot;
+                if (v >= 75) return BrWarm;
+            }
+            else
+            {
+                if (v >= 90) return BrHot;
+                if (v >= 80) return BrWarm;
+            }
             return BrCool;
         }
 

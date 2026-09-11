@@ -18,12 +18,12 @@
             BorderThickness="0"
             Padding="12,9">
         <StackPanel>
-            <!-- 主数据区：四列网格，标签 / 温度(右对齐) / 负载(左对齐) / 功耗(左对齐) -->
+            <!-- 主数据区：四列网格，标签 / 温度(右对齐) / 功耗(左对齐) / 负载(左对齐) -->
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="30" />
                     <ColumnDefinition Width="62" />
-                    <ColumnDefinition Width="62" />
+                    <ColumnDefinition Width="44" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
@@ -41,11 +41,11 @@
                     <TextBlock Text="°C" FontFamily="Consolas" FontSize="12" Foreground="#FF78808F"
                                VerticalAlignment="Bottom" Margin="1,0,0,4" />
                 </StackPanel>
-                <TextBlock Grid.Row="0" Grid.Column="2" x:Name="CpuLoad" Text="负载 --"
-                           FontFamily="Consolas" FontSize="12" Foreground="#FF9AD4FF"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
-                <TextBlock Grid.Row="0" Grid.Column="3" x:Name="CpuPower" Text="--"
+                <TextBlock Grid.Row="0" Grid.Column="2" x:Name="CpuPower" Text="--"
                            FontFamily="Consolas" FontSize="12" Foreground="#FFD8B36A"
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
+                <TextBlock Grid.Row="0" Grid.Column="3" x:Name="CpuLoad" Text="负载 --"
+                           FontFamily="Consolas" FontSize="12" Foreground="#FF9AD4FF"
                            TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
 
                 <!-- GPU 行 -->
@@ -59,11 +59,11 @@
                     <TextBlock Text="°C" FontFamily="Consolas" FontSize="12" Foreground="#FF78808F"
                                VerticalAlignment="Bottom" Margin="1,0,0,4" />
                 </StackPanel>
-                <TextBlock Grid.Row="1" Grid.Column="2" x:Name="GpuLoad" Text="负载 --"
-                           FontFamily="Consolas" FontSize="12" Foreground="#FFA7F3B0"
-                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
-                <TextBlock Grid.Row="1" Grid.Column="3" x:Name="GpuPower" Text="--"
+                <TextBlock Grid.Row="1" Grid.Column="2" x:Name="GpuPower" Text="--"
                            FontFamily="Consolas" FontSize="12" Foreground="#FFD8B36A"
+                           TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
+                <TextBlock Grid.Row="1" Grid.Column="3" x:Name="GpuLoad" Text="负载 --"
+                           FontFamily="Consolas" FontSize="12" Foreground="#FFA7F3B0"
                            TextAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,3" />
             </Grid>
 
