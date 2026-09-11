@@ -103,6 +103,7 @@ namespace StatsOSD
             }
 
             SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
             Log("started, admin=" + IsAdmin());
 
             // 排版自检：--shot <png路径>  启动几秒后把面板渲染成图片并退出
@@ -245,6 +246,16 @@ namespace StatsOSD
 
         private void OnDisplayChanged(object sender, EventArgs e)
         {
+            _overlay?.ApplyCorner();
+        }
+
+        /// <summary>系统睡眠/休眠期间采样本就不会进行，恢复时重置时间戳，避免看门狗误报"传感器无响应"</summary>
+        private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (e.Mode != PowerModes.Resume) return;
+            Interlocked.Exchange(ref _lastSampleTicksUtc, DateTime.UtcNow.Ticks);
+            _stallLogged = false;
+            Log("system resumed from sleep (watchdog timer reset)");
             _overlay?.ApplyCorner();
         }
 
@@ -721,6 +732,7 @@ namespace StatsOSD
         protected override void OnExit(ExitEventArgs e)
         {
             try { SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; } catch { }
+            try { SystemEvents.PowerModeChanged -= OnPowerModeChanged; } catch { }
             base.OnExit(e);
         }
 
