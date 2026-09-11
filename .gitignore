@@ -5,3 +5,5 @@ obj/
 .preview/
 *.user
 *.suo
+
+*.sys
