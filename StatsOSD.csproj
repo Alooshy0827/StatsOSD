@@ -8,10 +8,16 @@
     <RootNamespace>StatsOSD</RootNamespace>
     <AssemblyName>StatsOSD</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\StatsOSD.ico</ApplicationIcon>
     <PlatformTarget>x64</PlatformTarget>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="assets\StatsOSD.ico" />
+    <Resource Include="assets\StatsOSD.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="LibreHardwareMonitorLib">

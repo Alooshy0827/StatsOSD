@@ -1,5 +1,7 @@
 # StatsOSD — CPU/GPU 温度 OSD（类似微星小飞机的监控叠加层）
 
+<img src="assets/icon.png" width="96" alt="StatsOSD icon">
+
 透明置顶、鼠标穿透的深色小面板，常驻屏幕角落，实时显示：
 
 - CPU 温度（着色：≥90° 红 / ≥75° 橙 / 正常白）
@@ -41,6 +43,7 @@ StatsOSD.exe
 ```
 StatsOSD.exe --shot D:\temp\panel.png    # 启动 3 秒后把面板自身渲染成 PNG 并退出（排版自检）
 StatsOSD.exe --dump D:\temp\sensors.txt  # 导出全部硬件/传感器清单后退出
+StatsOSD.exe --iconshot D:\temp\ico.png  # 导出实际使用的托盘图标后退出（图标自检）
 ```
 
 ## 构建（可选）

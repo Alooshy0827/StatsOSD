@@ -79,6 +79,24 @@ namespace StatsOSD
                 };
                 dumpTimer.Start();
             }
+
+            // 图标自检：--iconshot <png路径>  导出实际使用的托盘图标后退出
+            string iconPath = ParseArg(e.Args, "--iconshot");
+            if (iconPath != null)
+            {
+                try
+                {
+                    using (var ic = LoadAppIcon())
+                    {
+                        Log("tray icon resolved: " + ic.Width + "x" + ic.Height);
+                        using (var bmp = ic.ToBitmap()) bmp.Save(iconPath, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                    Log("icon shot saved: " + iconPath);
+                }
+                catch (Exception ex) { Log("icon shot error: " + ex.Message); }
+                ExitApp();
+                return;
+            }
         }
 
         private static string ParseArg(string[] args, string name)
@@ -122,7 +140,7 @@ namespace StatsOSD
 
         private void BuildTray()
         {
-            _tray = new WF.NotifyIcon { Icon = IconFactory.Make(), Text = "StatsOSD", Visible = true };
+            _tray = new WF.NotifyIcon { Icon = LoadAppIcon(), Text = "StatsOSD", Visible = true };
             var menu = new WF.ContextMenuStrip();
 
             _miVisible = Add(menu, "隐藏 OSD", (s, e) => ToggleVisible());
@@ -217,6 +235,7 @@ namespace StatsOSD
                 return;
             }
             _bgWin = new BgAlphaWindow(_cfg, v => _overlay?.SetBackgroundAlpha(v));
+            try { _bgWin.Icon = LoadAppIconSource(); } catch { }
             _bgWin.Closed += (s, e) => _bgWin = null;
             _bgWin.Show();
         }
@@ -273,6 +292,46 @@ namespace StatsOSD
         }
 
         // ---------- helpers ----------
+
+        /// <summary>托盘图标：用内嵌的多尺寸 app 图标，按系统托盘推荐尺寸取帧；失败则退回程序绘制的圆点</summary>
+        private static D.Icon LoadAppIcon()
+        {
+            try
+            {
+                var res = Application.GetResourceStream(new Uri("assets/StatsOSD.ico", UriKind.Relative));
+                if (res != null)
+                {
+                    using (var s = res.Stream)
+                    {
+                        var ms = new MemoryStream();
+                        s.CopyTo(ms);
+                        ms.Position = 0;
+                        int sz = WF.SystemInformation.SmallIconSize.Width;
+                        if (sz <= 0) sz = 16;
+                        return new D.Icon(ms, new D.Size(sz, sz));
+                    }
+                }
+            }
+            catch (Exception ex) { Log("tray icon load error: " + ex.Message); }
+            return IconFactory.Make();
+        }
+
+        /// <summary>WPF 窗口图标（设置对话框标题栏用）</summary>
+        private static System.Windows.Media.ImageSource LoadAppIconSource()
+        {
+            var res = Application.GetResourceStream(new Uri("assets/StatsOSD.ico", UriKind.Relative));
+            if (res == null) return null;
+            using (var s = res.Stream)
+            {
+                var ms = new MemoryStream();
+                s.CopyTo(ms);
+                ms.Position = 0;
+                return System.Windows.Media.Imaging.BitmapFrame.Create(
+                    ms,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.None,
+                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+            }
+        }
 
         public static bool IsAdmin()
         {
