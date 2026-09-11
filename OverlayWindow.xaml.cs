@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace StatsOSD
 {
@@ -16,6 +17,13 @@ namespace StatsOSD
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_TRANSPARENT = 0x00000020;
         private const int WS_EX_NOACTIVATE = 0x08000000;
+
+        private const int HWND_TOPMOST = -1;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOACTIVATE = 0x0010;
+
+        private DispatcherTimer _topmostTimer;
 
         private bool _passthrough = true;
         private int _corner = 1;   // 0左上 1右上 2左下 3右下
@@ -39,6 +47,35 @@ namespace StatsOSD
         {
             _passthrough = on;
             ApplyStyle();
+        }
+
+        /// <summary>强制顶层：每秒重新抢占一次 Z 序，防止被其他置顶窗口（游戏启动器、录屏工具等）压住</summary>
+        public void SetForceTopmost(bool on)
+        {
+            if (on)
+            {
+                if (_topmostTimer == null)
+                {
+                    _topmostTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    _topmostTimer.Tick += (s, e) => ReassertTopmost();
+                }
+                Topmost = true;
+                _topmostTimer.Start();
+                bool ok = ReassertTopmost();
+                App.Log("force topmost ON (SetWindowPos ok=" + ok + ")");
+            }
+            else
+            {
+                if (_topmostTimer != null) _topmostTimer.Stop();
+                App.Log("force topmost OFF");
+            }
+        }
+
+        private bool ReassertTopmost()
+        {
+            IntPtr h = new WindowInteropHelper(this).Handle;
+            if (h == IntPtr.Zero) return false;
+            return SetWindowPos(h, new IntPtr(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
 
         /// <summary>设置面板背景不透明度（0-100，只影响背景层，文字保持清晰）</summary>
@@ -208,5 +245,8 @@ namespace StatsOSD
 
         [DllImport("user32.dll")]
         private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
     }
 }

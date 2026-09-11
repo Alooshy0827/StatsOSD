@@ -24,6 +24,7 @@ namespace StatsOSD
         private WF.ToolStripMenuItem _miVisible;
         private WF.ToolStripMenuItem _miPassthru;
         private WF.ToolStripMenuItem _miCores;
+        private WF.ToolStripMenuItem _miTopmost;
         private readonly WF.ToolStripMenuItem[] _miCorner = new WF.ToolStripMenuItem[4];
 
         protected override void OnStartup(StartupEventArgs e)
@@ -40,6 +41,7 @@ namespace StatsOSD
             _overlay.IsVisibleChanged += (s, a) => { if (_miVisible != null) _miVisible.Text = _overlay.IsVisible ? "隐藏 OSD" : "显示 OSD"; };
             _overlay.Show();
             _overlay.CornerIndex = _cfg.Corner;
+            _overlay.SetForceTopmost(_cfg.ForceTopmost);
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += OnTick;
@@ -165,6 +167,9 @@ namespace StatsOSD
             Add(menu, "背景透明度…", (s, e) => OpenBgWindow());
             Add(menu, "导出传感器清单", (s, e) => DumpSensorsToFile());
 
+            _miTopmost = Add(menu, "强制顶层显示（压制其他置顶窗口）", (s, e) => ToggleForceTopmost());
+            _miTopmost.CheckOnClick = true;
+
             menu.Items.Add(new WF.ToolStripSeparator());
 
             if (IsAdmin())
@@ -184,6 +189,7 @@ namespace StatsOSD
 
             _miPassthru.Checked = _cfg.ClickThrough;
             _miCores.Checked = _cfg.ShowCores;
+            _miTopmost.Checked = _cfg.ForceTopmost;
             SyncCornerChecks();
         }
 
@@ -225,6 +231,13 @@ namespace StatsOSD
             _cfg.ShowCores = _miCores.Checked;
             _cfg.Save();
             if (_overlay != null) _overlay.ShowCores = _cfg.ShowCores;
+        }
+
+        private void ToggleForceTopmost()
+        {
+            _cfg.ForceTopmost = _miTopmost.Checked;
+            _cfg.Save();
+            _overlay?.SetForceTopmost(_cfg.ForceTopmost);
         }
 
         private void OpenBgWindow()

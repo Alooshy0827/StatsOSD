@@ -10,6 +10,7 @@ namespace StatsOSD
         public bool ClickThrough { get; set; } = true;
         public bool ShowCores { get; set; } = true;
         public int BackgroundAlpha { get; set; } = 90; // 0-100：面板背景不透明度（%）
+        public bool ForceTopmost { get; set; } = false; // 强制顶层：定时重新抢占 Z 序
 
         private static string DirPath
         {
