@@ -41,6 +41,7 @@ namespace StatsOSD
         private readonly List<WF.ToolStripMenuItem> _miMetrics = new List<WF.ToolStripMenuItem>();
         private readonly WF.ToolStripMenuItem[] _miLayout = new WF.ToolStripMenuItem[3];
         private readonly WF.ToolStripMenuItem[] _miFont = new WF.ToolStripMenuItem[4];
+        private WF.ToolStripMenuItem _miOutline;
         private readonly WF.ToolStripMenuItem[] _miIconPlace = new WF.ToolStripMenuItem[2];
 
         protected override void OnStartup(StartupEventArgs e)
@@ -419,6 +420,10 @@ namespace StatsOSD
             }
             menu.Items.Add(miFont);
 
+            // 字体描边（默认开，透明背景下提升可读性）
+            _miOutline = Add(menu, "字体描边", (s, e) => ToggleOutline());
+            _miOutline.CheckOnClick = true;
+
             // 小图标位置（悬停二级菜单）：托盘常显区 / 溢出区
             var miIcon = new WF.ToolStripMenuItem("图标位置");
             string[] places = { "托盘常显区", "托盘溢出区（默认）" };
@@ -466,6 +471,7 @@ namespace StatsOSD
             SyncIconPlaceChecks();
             SyncMetricChecks();
             SyncLayoutFontChecks();
+            _miOutline.Checked = _cfg.TextOutline;
         }
 
         /// <summary>已启用指标（配置为空时按默认项）</summary>
@@ -533,6 +539,14 @@ namespace StatsOSD
             _overlay.ApplyConfig(_cfg);
             SyncLayoutFontChecks();
             Log("font scale -> " + scale);
+        }
+
+        private void ToggleOutline()
+        {
+            _cfg.TextOutline = _miOutline.Checked;
+            _cfg.Save();
+            _overlay.ApplyConfig(_cfg);
+            Log("text outline -> " + _cfg.TextOutline);
         }
 
         private WF.ToolStripMenuItem Add(WF.ContextMenuStrip m, string text, EventHandler handler)

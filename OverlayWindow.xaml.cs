@@ -40,6 +40,23 @@ namespace StatsOSD
         private static readonly SolidColorBrush BrUnit = MakeBrush("#FF78808F");
         private static readonly SolidColorBrush BrDrag = MakeBrush("#FF4DD2FF");
 
+        /// <summary>文字描边：零偏移 + 小半径阴影 = 一圈均匀的深色描边（背景透明时保证可读性）</summary>
+        private static readonly System.Windows.Media.Effects.DropShadowEffect OutlineEffect = CreateOutlineEffect();
+
+        private static System.Windows.Media.Effects.DropShadowEffect CreateOutlineEffect()
+        {
+            var eff = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 2.5,
+                ShadowDepth = 0,
+                Opacity = 0.95,
+                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
+            };
+            eff.Freeze();
+            return eff;
+        }
+
         // 自由拖动位置（纯自由拖动，无任何额外对齐行为）
         private bool _freeMode;                 // 自由位置模式（不再自动贴角）
         private bool _dragMode;                 // 拖动模式（临时解除鼠标穿透）
@@ -292,10 +309,18 @@ namespace StatsOSD
         private Settings _cfg;
         private readonly List<Cell> _cells = new List<Cell>();
 
+        /// <summary>按配置返回描边效果（关闭时返回 null）</summary>
+        private System.Windows.Media.Effects.Effect OutlineOrNull
+        {
+            get { return (_cfg != null && _cfg.TextOutline) ? OutlineEffect : null; }
+        }
+
         /// <summary>应用配置并重建面板内容</summary>
         public void ApplyConfig(Settings cfg)
         {
             _cfg = cfg;
+            Warn.Effect = OutlineOrNull;
+            DragHint.Effect = OutlineOrNull;
             BuildContent();
         }
 
@@ -355,6 +380,7 @@ namespace StatsOSD
                     FontSize = 11.5 * Scale,
                     FontWeight = FontWeights.Bold,
                     Foreground = BrLabel,
+                    Effect = OutlineOrNull,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(label, 0);
@@ -372,6 +398,7 @@ namespace StatsOSD
                         FontSize = primary ? baseSize : baseSize * 0.63,
                         FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
                         Foreground = BrCool,
+                        Effect = OutlineOrNull,
                         TextAlignment = TextAlignment.Right,
                         MinWidth = (primary ? 44 : 32) * Scale,
                         Margin = new Thickness(first ? 0 : 8 * Scale, 0, 0, 0),
@@ -406,6 +433,7 @@ namespace StatsOSD
                     FontSize = baseSize * 0.95,
                     FontWeight = FontWeights.Bold,
                     Foreground = BrCool,
+                    Effect = OutlineOrNull,
                     Margin = new Thickness(first ? 0 : 12 * Scale, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 };
@@ -432,6 +460,7 @@ namespace StatsOSD
                     FontFamily = new FontFamily(FontName),
                     FontSize = 11.5 * Scale,
                     Foreground = BrLabel,
+                    Effect = OutlineOrNull,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(name, 0);
@@ -443,6 +472,7 @@ namespace StatsOSD
                     FontSize = primary ? baseSize : baseSize * 0.78,
                     FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
                     Foreground = BrCool,
+                    Effect = OutlineOrNull,
                     TextAlignment = TextAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };
