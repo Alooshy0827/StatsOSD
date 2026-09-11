@@ -9,7 +9,7 @@ namespace StatsOSD
     {
         public int Corner { get; set; } = 1;          // 0左上 1右上 2左下 3右下
         public bool ClickThrough { get; set; } = true;
-        public int BackgroundAlpha { get; set; } = 90; // 0-100：面板背景不透明度（%）
+        public int BackgroundAlpha { get; set; } = 50; // 0-100：面板背景不透明度（%）；新安装默认 50%
         public bool ForceTopmost { get; set; } = false; // 强制顶层：定时重新抢占 Z 序
         public string PositionMode { get; set; } = "corner"; // corner=贴角 | free=自由位置
         public int FreeX { get; set; } = -1;           // 自由位置 X（DIP，-1 表示未设置）
