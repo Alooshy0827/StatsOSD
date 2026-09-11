@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace CpuHud
 {
@@ -17,6 +20,7 @@ namespace CpuHud
         private bool _passthrough = true;
         private int _corner = 1;   // 0左上 1右上 2左下 3右下
         private bool _positioning;
+        private readonly List<TextBlock> _coreCells = new List<TextBlock>();
 
         private static readonly SolidColorBrush BrHot = MakeBrush("#FFFF5B5B");
         private static readonly SolidColorBrush BrWarm = MakeBrush("#FFFFB04D");
@@ -99,27 +103,17 @@ namespace CpuHud
         public void Update(Sample s)
         {
             // CPU
-            CpuTemp.Text = s.CpuTemp.HasValue ? s.CpuTemp.Value.ToString("0") + "\u00B0C" : "--";
+            CpuTemp.Text = s.CpuTemp.HasValue ? s.CpuTemp.Value.ToString("0") : "--";
             CpuTemp.Foreground = Severity(s.CpuTemp);
             CpuLoad.Text = s.CpuLoad.HasValue ? "负载 " + s.CpuLoad.Value.ToString("0") + "%" : "负载 --";
 
             // GPU
-            GpuTemp.Text = s.GpuTemp.HasValue ? s.GpuTemp.Value.ToString("0") + "\u00B0C" : "--";
+            GpuTemp.Text = s.GpuTemp.HasValue ? s.GpuTemp.Value.ToString("0") : "--";
             GpuTemp.Foreground = Severity(s.GpuTemp);
             GpuLoad.Text = s.GpuLoad.HasValue ? "负载 " + s.GpuLoad.Value.ToString("0") + "%" : "负载 --";
 
             // 每核心
-            if (ShowCores && s.Cores.Count > 0)
-            {
-                Cores.Visibility = Visibility.Visible;
-                Cores.Text = string.Join("    ", s.Cores.Select(c => c.Name + " " + c.Temp.ToString("0") + "\u00B0"));
-                double max = s.Cores.Max(c => c.Temp);
-                Cores.Foreground = Severity(max);
-            }
-            else
-            {
-                Cores.Visibility = Visibility.Collapsed;
-            }
+            UpdateCores(s);
 
             // 提示
             if (!string.IsNullOrEmpty(s.Warn))
@@ -130,6 +124,66 @@ namespace CpuHud
             else
             {
                 Warn.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void UpdateCores(Sample s)
+        {
+            if (!ShowCores || s.Cores.Count == 0)
+            {
+                if (_coreCells.Count > 0)
+                {
+                    _coreCells.Clear();
+                    CoresPanel.Children.Clear();
+                }
+                CoresPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            CoresPanel.Visibility = Visibility.Visible;
+
+            if (_coreCells.Count != s.Cores.Count)
+            {
+                _coreCells.Clear();
+                CoresPanel.Children.Clear();
+                for (int i = 0; i < s.Cores.Count; i++)
+                {
+                    var cell = new TextBlock();
+                    _coreCells.Add(cell);
+                    CoresPanel.Children.Add(cell);
+                }
+            }
+
+            for (int i = 0; i < s.Cores.Count; i++)
+            {
+                CoreTemp c = s.Cores[i];
+                TextBlock cell = _coreCells[i];
+                cell.Text = c.Name + " " + c.Temp.ToString("0") + "\u00B0";
+                cell.Foreground = Severity(c.Temp);
+            }
+        }
+
+        /// <summary>把面板自身渲染成 PNG（排版自检用；叠加在中性底色上以便看清半透明效果）</summary>
+        public void SaveSnapshot(string path)
+        {
+            double w = ActualWidth, h = ActualHeight;
+            if (double.IsNaN(w) || w <= 0 || double.IsNaN(h) || h <= 0) return;
+
+            var visual = new DrawingVisual();
+            using (DrawingContext dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x35, 0x38, 0x40)), null, new Rect(0, 0, w, h));
+                dc.DrawRectangle(new VisualBrush(Card), null, new Rect(0, 0, w, h));
+            }
+
+            var rtb = new RenderTargetBitmap((int)Math.Ceiling(w), (int)Math.Ceiling(h), 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(rtb));
+            using (var fs = System.IO.File.Create(path))
+            {
+                encoder.Save(fs);
             }
         }
 

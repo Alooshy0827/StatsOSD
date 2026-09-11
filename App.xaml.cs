@@ -49,6 +49,31 @@ namespace CpuHud
 
             SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
             Log("started, admin=" + IsAdmin());
+
+            // 排版自检：--shot <png路径>  启动几秒后把面板渲染成图片并退出
+            string shotPath = ParseShotArg(e.Args);
+            if (shotPath != null)
+            {
+                var shotTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                shotTimer.Tick += (s, a) =>
+                {
+                    shotTimer.Stop();
+                    try { _overlay.SaveSnapshot(shotPath); Log("snapshot saved: " + shotPath); }
+                    catch (Exception ex) { Log("snapshot error: " + ex.Message); }
+                    ExitApp();
+                };
+                shotTimer.Start();
+            }
+        }
+
+        private static string ParseShotArg(string[] args)
+        {
+            if (args == null) return null;
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (string.Equals(args[i], "--shot", StringComparison.OrdinalIgnoreCase)) return args[i + 1];
+            }
+            return null;
         }
 
         private void OnDisplayChanged(object sender, EventArgs e)

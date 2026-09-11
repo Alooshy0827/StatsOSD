@@ -103,12 +103,12 @@ namespace CpuHud
             if (!r.HasAny)
             {
                 r.Warn = App.IsAdmin()
-                    ? "等待传感器数据…（若长时间无数据，说明主板/CPU 不支持直接读取）"
-                    : "未读取到传感器：请右键托盘图标 → 以管理员身份重新启动（读取温度需要底层驱动）";
+                    ? "等待传感器数据…"
+                    : "未读到传感器：请以管理员身份重启";
             }
             else if (!r.CpuTemp.HasValue && !r.Cores.Any() && !App.IsAdmin())
             {
-                r.Warn = "CPU 温度需要管理员权限（托盘菜单可一键重启）";
+                r.Warn = "CPU 温度需管理员权限（托盘菜单重启）";
             }
 
             return r;
