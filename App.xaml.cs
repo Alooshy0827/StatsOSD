@@ -224,7 +224,7 @@ namespace StatsOSD
             menu.Items.Add(new WF.ToolStripSeparator());
 
             // ── 组 2：带二级菜单 / 二级窗口的设置 ──
-            var miPos = new WF.ToolStripMenuItem("位置");
+            var miPos = new WF.ToolStripMenuItem("面板位置");
             string[] names = { "左上角", "右上角", "左下角", "右下角" };
             for (int i = 0; i < 4; i++)
             {
@@ -235,8 +235,8 @@ namespace StatsOSD
             menu.Items.Add(miPos);
 
             // 小图标位置（悬停二级菜单）：托盘常显区 / 溢出区
-            var miIcon = new WF.ToolStripMenuItem("小图标位置");
-            string[] places = { "显示在托盘常显区", "收进托盘溢出区（默认）" };
+            var miIcon = new WF.ToolStripMenuItem("图标位置");
+            string[] places = { "托盘常显区", "托盘溢出区（默认）" };
             for (int i = 0; i < 2; i++)
             {
                 int k = i;
@@ -245,14 +245,14 @@ namespace StatsOSD
             }
             menu.Items.Add(miIcon);
 
-            Add(menu, "背景透明度…", (s, e) => OpenBgWindow());
+            Add(menu, "透明度…", (s, e) => OpenBgWindow());
 
             menu.Items.Add(new WF.ToolStripSeparator());
 
             // ── 组 3：单纯开关（开机自启固定放这一组最后）──
-            _miPassthru = Add(menu, "鼠标穿透（不挡游戏操作）", (s, e) => TogglePassthrough());
+            _miPassthru = Add(menu, "鼠标穿透", (s, e) => TogglePassthrough());
             _miPassthru.CheckOnClick = true;
-            _miTopmost = Add(menu, "强制顶层显示（压制其他置顶窗口）", (s, e) => ToggleForceTopmost());
+            _miTopmost = Add(menu, "强制置顶", (s, e) => ToggleForceTopmost());
             _miTopmost.CheckOnClick = true;
             _miAutoStart = Add(menu, "开机自启", (s, e) => ToggleAutoStart());
             _miAutoStart.CheckOnClick = true;
@@ -260,21 +260,20 @@ namespace StatsOSD
             menu.Items.Add(new WF.ToolStripSeparator());
 
             // ── 组 4：工具 ──
-            Add(menu, "导出传感器清单", (s, e) => DumpSensorsToFile());
-            Add(menu, "重启资源管理器（使托盘位置生效）", (s, e) => RestartExplorer());
-            Add(menu, "打开任务栏设置（手动调整托盘图标）", (s, e) => OpenTaskbarSettings());
+            Add(menu, "导出传感器", (s, e) => DumpSensorsToFile());
+            Add(menu, "重启资源管理器", (s, e) => RestartExplorer());
 
             menu.Items.Add(new WF.ToolStripSeparator());
 
             // ── 组 5：权限与退出 ──
             if (IsAdmin())
             {
-                var miAdmin = Add(menu, "已以管理员身份运行（完整传感器）", null);
+                var miAdmin = Add(menu, "已以管理员运行", null);
                 miAdmin.Enabled = false;
             }
             else
             {
-                Add(menu, "以管理员身份重新启动（读取温度需要）", (s, e) => RestartAsAdmin());
+                Add(menu, "以管理员重启", (s, e) => RestartAsAdmin());
             }
 
             Add(menu, "退出", (s, e) => ExitApp());
@@ -351,12 +350,6 @@ namespace StatsOSD
                 Log("explorer restarted (tray placement)");
             }
             catch (Exception ex) { Log("restart explorer error: " + ex.Message); }
-        }
-
-        private void OpenTaskbarSettings()
-        {
-            try { Process.Start(new ProcessStartInfo("ms-settings:taskbar") { UseShellExecute = true }); }
-            catch (Exception ex) { Log("open taskbar settings error: " + ex.Message); }
         }
 
         private void ToggleVisible()
