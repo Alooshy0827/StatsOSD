@@ -1,0 +1,49 @@
+版权所有 (C) 2026 Alooshy0827。保留所有权利。
+Copyright (C) 2026 Alooshy0827. All rights reserved.
+
+本软件（StatsOSD，包括源代码、可执行文件、图标及相关文档）为专有软件，
+版权及一切知识产权归版权所有者所有。
+
+未经版权所有者事先书面许可，任何个人或组织不得：
+  1. 复制、发布、传播、出售或出租本软件或其任何部分；
+  2. 修改、翻译、反编译、反汇编，或据以创作衍生作品；
+  3. 将本软件用于任何商业用途；
+  4. 移除、遮蔽或修改本软件中的版权声明、作者署名或其他权利声明；
+  5. 将本软件或其衍生作品以任何形式再许可给第三方。
+
+在仓库可见性允许的范围内，允许：
+  - 查看本项目源代码；
+  - 通过 GitHub 的 Issue 反馈问题、通过 Fork + Pull Request 提交改进建议。
+    提交贡献即视为同意：该贡献的版权一并归版权所有者所有，
+    版权所有者可自行决定是否采纳、修改或商用，无需另行支付费用。
+
+本软件按"现状"（AS IS）提供，不附带任何明示或暗示的担保，包括但不限于
+对适销性、特定用途适用性及不侵权的担保。因使用本软件所产生的任何直接或
+间接损失，版权所有者不承担任何责任。
+
+----------------------------------------------------------------------
+
+This software (StatsOSD, including its source code, binaries, icon and
+documentation) is proprietary software. All copyright and intellectual
+property rights are reserved by the copyright holder.
+
+Without the prior written permission of the copyright holder, no person or
+entity may: (1) copy, publish, distribute, sell or rent this software or any
+part of it; (2) modify, translate, reverse engineer, decompile, disassemble,
+or create derivative works based on it; (3) use it for any commercial
+purpose; (4) remove or alter any copyright, attribution or proprietary
+notice; or (5) sublicense it to any third party.
+
+To the extent permitted by the repository's visibility, you may view the
+source code, report issues via GitHub Issues, and submit improvement
+suggestions via Fork + Pull Request. By submitting a contribution you agree
+that its copyright is assigned to the copyright holder, who may adopt,
+modify or commercialize it at their sole discretion without further
+compensation.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
