@@ -23,19 +23,19 @@ namespace StatsOSD
         public string Text
         {
             get { return _text; }
-            set { if (_text != value) { _text = value; InvalidateVisual(); } }
+            set { if (_text != value) { _text = value; InvalidateMeasure(); InvalidateVisual(); } }
         }
 
         public string Suffix
         {
             get { return _suffix; }
-            set { if (_suffix != value) { _suffix = value; InvalidateVisual(); } }
+            set { if (_suffix != value) { _suffix = value; InvalidateMeasure(); InvalidateVisual(); } }
         }
 
         public string Prefix
         {
             get { return _prefix; }
-            set { if (_prefix != value) { _prefix = value; InvalidateVisual(); } }
+            set { if (_prefix != value) { _prefix = value; InvalidateMeasure(); InvalidateVisual(); } }
         }
 
         public Brush TextBrush

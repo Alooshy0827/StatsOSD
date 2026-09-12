@@ -32,6 +32,7 @@ namespace StatsOSD
         private bool _sensorsOpened;
         private bool _vendorsApplied;
         private string _vendorArgCpu, _vendorArgGpu;
+        private string _menuDumpPath;
         private bool _stallLogged;
         private System.Threading.Mutex _singleInstance;
 
@@ -66,6 +67,7 @@ namespace StatsOSD
 
             _cfg = Settings.Load();
             _demo = HasFlag(e.Args, "--demo");
+            _menuDumpPath = ParseArg(e.Args, "--menu");
 
             // 演示/截图用：--vendors AMD,NVIDIA 覆盖厂商识别（影响分组配色）
             string vendors = ParseArg(e.Args, "--vendors");
@@ -288,8 +290,9 @@ namespace StatsOSD
                     string gpuF = gpuV ?? _sensors.GpuVendor;
                     _overlay.SetVendors(cpuF, gpuF);
                     _overlay.SetModels(
-                        _demo ? DemoModel(cpuF) : _sensors.CpuName,
-                        _demo ? DemoModel(gpuF) : _sensors.GpuName);
+                        Sensors.ShortModel(_demo ? DemoModel(cpuF) : _sensors.CpuName, false),
+                        Sensors.ShortModel(_demo ? DemoModel(gpuF) : _sensors.GpuName, true),
+                        _demo ? "DDR5 5600" : _sensors.MemType);
                 }
             }
 
@@ -409,11 +412,16 @@ namespace StatsOSD
 
             Add(menu, "拖动调整位置", (s, e) => StartDragMode());
 
-            // 显示内容：按分组列出全部指标，勾选即显示
+            // 显示内容：按分组列出全部指标，勾选即显示（分组从注册表自动推导，避免改名后菜单变空）
             var miMetrics = new WF.ToolStripMenuItem("显示内容");
-            foreach (string grp in new[] { "CPU", "GPU", "内存" })
+            var groupNames = new List<string>();
+            foreach (MetricDef d in Metrics.All)
             {
-                var g = new WF.ToolStripMenuItem(grp);
+                if (!groupNames.Contains(d.Group)) groupNames.Add(d.Group);
+            }
+            foreach (string grp in groupNames)
+            {
+                var sub = new WF.ToolStripMenuItem(grp);
                 foreach (MetricDef def in Metrics.All)
                 {
                     if (def.Group != grp) continue;
@@ -421,9 +429,9 @@ namespace StatsOSD
                     item.CheckOnClick = true;
                     item.Tag = def.Id;
                     _miMetrics.Add(item);
-                    g.DropDownItems.Add(item);
+                    sub.DropDownItems.Add(item);
                 }
-                miMetrics.DropDownItems.Add(g);
+                miMetrics.DropDownItems.Add(sub);
             }
             menu.Items.Add(miMetrics);
 
@@ -503,6 +511,32 @@ namespace StatsOSD
             SyncMetricChecks();
             SyncLayoutFontChecks();
             _miOutline.Checked = _cfg.TextOutline;
+
+            // 菜单结构自检：--menu <文件> 导出菜单树
+            if (!string.IsNullOrEmpty(_menuDumpPath))
+            {
+                try
+                {
+                    var sb = new System.Text.StringBuilder();
+                    foreach (WF.ToolStripItem it in menu.Items) DumpMenuItem(it, 0, sb);
+                    System.IO.File.WriteAllText(_menuDumpPath, sb.ToString(), System.Text.Encoding.UTF8);
+                    Log("menu dumped: " + _menuDumpPath);
+                }
+                catch (Exception ex) { Log("menu dump error: " + ex.Message); }
+            }
+        }
+
+        private static void DumpMenuItem(WF.ToolStripItem it, int depth, System.Text.StringBuilder sb)
+        {
+            var mi = it as WF.ToolStripMenuItem;
+            sb.Append(new string(' ', depth * 2)).Append(it.Text);
+            if (mi != null && mi.CheckOnClick) sb.Append("   [勾选]");
+            if (mi != null && mi.Checked) sb.Append("  ✓");
+            sb.AppendLine();
+            if (mi != null)
+            {
+                foreach (WF.ToolStripItem c in mi.DropDownItems) DumpMenuItem(c, depth + 1, sb);
+            }
         }
 
         /// <summary>已启用指标（配置为空时按默认项）</summary>
@@ -751,7 +785,7 @@ namespace StatsOSD
         {
             if (vendor == "Intel") return "Intel Core Ultra 9 275HX";
             if (vendor == "AMD") return "AMD Ryzen 9 9950X3D";
-            if (vendor == "NVIDIA") return "NVIDIA GeForce RTX 5080";
+            if (vendor == "NVIDIA") return "NVIDIA GeForce RTX 5080 Laptop GPU";
             return "";
         }
 

@@ -33,6 +33,9 @@ namespace StatsOSD
 
         /// <summary>可选：自定义显示文本（如 "19.7/32.0"）；为空则按数值+小数位格式化</summary>
         public Func<Sample, string> Text;
+
+        /// <summary>列宽估算用的样例文本（取该指标可能出现的最宽数值形状，避免布局被长值撑破）</summary>
+        public string WidthSample;
     }
 
     /// <summary>
@@ -50,24 +53,31 @@ namespace StatsOSD
         public static readonly List<MetricDef> All = new List<MetricDef>
         {
             // ---- CPU ----
-            M("cpu.temp",    "CPU",  "CPU 温度", "°C",  0, CValue, MetricKind.CpuTemp, MetricStyle.Primary,   s => s.CpuTemp),
-            M("cpu.power",   "CPU",  "CPU 功耗", "W",   0, CPower, MetricKind.Normal,  MetricStyle.Secondary, s => s.CpuPower),
-            M("cpu.load",    "CPU",  "CPU 占用", "%",   0, CLoad1, MetricKind.Normal,  MetricStyle.Secondary, s => s.CpuLoad),
-            M("cpu.clock",   "CPU",  "CPU 频率", "MHz", 0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.CpuClock),
+            W(M("cpu.temp",    "CPU",  "CPU 温度", "°C",  0, CValue, MetricKind.CpuTemp, MetricStyle.Primary,   s => s.CpuTemp), "88"),
+            W(M("cpu.power",   "CPU",  "CPU 功耗", "W",   0, CPower, MetricKind.Normal,  MetricStyle.Secondary, s => s.CpuPower), "888"),
+            W(M("cpu.load",    "CPU",  "CPU 占用", "%",   0, CLoad1, MetricKind.Normal,  MetricStyle.Secondary, s => s.CpuLoad), "100"),
+            W(M("cpu.clock",   "CPU",  "CPU 频率", "MHz", 0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.CpuClock), "8888"),
 
             // ---- GPU ----
-            M("gpu.temp",    "GPU",  "GPU 温度", "°C",  0, CValue, MetricKind.GpuTemp, MetricStyle.Primary,   s => s.GpuTemp),
-            M("gpu.power",   "GPU",  "GPU 功耗", "W",   0, CPower, MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuPower),
-            M("gpu.load",    "GPU",  "GPU 占用", "%",   0, CLoad2, MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuLoad),
-            M("gpu.hotspot", "GPU",  "GPU 热点", "°C",  0, CMisc,  MetricKind.GpuTemp, MetricStyle.Secondary, s => s.GpuHotspot),
-            M("gpu.clock",   "GPU",  "GPU 频率", "MHz", 0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuClock),
-            M("gpu.vram",    "GPU",  "显存占用", "MB",  0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuVram),
-            M("gpu.fan",     "GPU",  "GPU 风扇", "%",   0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuFan),
+            W(M("gpu.temp",    "GPU",  "GPU 温度", "°C",  0, CValue, MetricKind.GpuTemp, MetricStyle.Primary,   s => s.GpuTemp), "88"),
+            W(M("gpu.power",   "GPU",  "GPU 功耗", "W",   0, CPower, MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuPower), "888"),
+            W(M("gpu.load",    "GPU",  "GPU 占用", "%",   0, CLoad2, MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuLoad), "100"),
+            W(M("gpu.hotspot", "GPU",  "GPU 热点", "°C",  0, CMisc,  MetricKind.GpuTemp, MetricStyle.Secondary, s => s.GpuHotspot), "88"),
+            W(M("gpu.clock",   "GPU",  "GPU 频率", "MHz", 0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuClock), "8888"),
+            W(M("gpu.vram",    "GPU",  "显存占用", "MB",  0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuVram), "88888"),
+            W(M("gpu.fan",     "GPU",  "GPU 风扇", "%",   0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuFan), "100"),
 
             // ---- 内存（分组名 Mem）----
-            M("mem.used",    "Mem",  "内存 已用/总量", "GB", 1, CMisc, MetricKind.Normal, MetricStyle.Primary,   s => s.MemUsedGb, MemUsedTotal),
-            M("mem.percent", "Mem",  "内存占用率",     "%",  0, CMisc, MetricKind.Normal, MetricStyle.Secondary, s => s.MemPercent)
+            W(M("mem.used",    "Mem",  "内存 已用/总量", "GB", 1, CMisc, MetricKind.Normal, MetricStyle.Primary,   s => s.MemUsedGb, MemUsedTotal), "88.8/88.8"),
+            W(M("mem.percent", "Mem",  "内存占用率",     "%",  0, CMisc, MetricKind.Normal, MetricStyle.Secondary, s => s.MemPercent), "100")
         };
+
+        /// <summary>登记列宽样例</summary>
+        private static MetricDef W(MetricDef def, string widthSample)
+        {
+            def.WidthSample = widthSample;
+            return def;
+        }
 
         private static MetricDef M(string id, string group, string name, string suffix, int decimals,
                                    string colorHex, MetricKind kind, MetricStyle style, Func<Sample, double?> get,

@@ -45,7 +45,8 @@ namespace StatsOSD
         private static readonly SolidColorBrush BrAmd = MakeBrush("#FFE8452C");
         private static readonly SolidColorBrush BrNvidia = MakeBrush("#FF76B900");
         private static readonly SolidColorBrush BrGroupNeutral = MakeBrush("#FF3C4657");
-        private static readonly SolidColorBrush BrModel = MakeBrush("#D9FFFFFF");
+        private static readonly SolidColorBrush BrModel = MakeBrush("#FFFFFFFF");   // 型号：白
+        private static readonly SolidColorBrush BrGroupName = MakeBrush("#D9FFFFFF"); // 分组名（CPU/GPU/Mem）：浅灰
 
         /// <summary>文字描边：零偏移 + 小半径阴影 = 一圈均匀的深色描边（背景透明时保证可读性）</summary>
         private static readonly System.Windows.Media.Effects.DropShadowEffect OutlineEffect = CreateOutlineEffect();
@@ -84,14 +85,16 @@ namespace StatsOSD
         private string _gpuVendor = "";
         private string _cpuModel = "";
         private string _gpuModel = "";
+        private string _memModel = "";
         private int _blockAlpha = 50;
 
         /// <summary>硬件型号（显示在色块内）</summary>
-        public void SetModels(string cpu, string gpu)
+        public void SetModels(string cpu, string gpu, string mem = null)
         {
-            if (_cpuModel == cpu && _gpuModel == gpu) return;
+            if (_cpuModel == cpu && _gpuModel == gpu && _memModel == mem) return;
             _cpuModel = cpu ?? "";
             _gpuModel = gpu ?? "";
+            _memModel = mem ?? "";
             BuildContent();
         }
 
@@ -99,6 +102,7 @@ namespace StatsOSD
         {
             if (group == "CPU") return _cpuModel;
             if (group == "GPU") return _gpuModel;
+            if (group == "Mem") return _memModel;
             return "";
         }
 
@@ -108,12 +112,22 @@ namespace StatsOSD
             {
                 Text = model,
                 FontName = FontName,
-                FontSize = baseSize * 0.5,
+                FontSize = baseSize * 0.70,     // 型号是这张卡的标题，略大于数值（0.68）
                 TextBrush = BrModel,
                 StrokeBrush = OutlineBrush,
                 StrokeThickness = 1.6 * Scale,
                 HorizontalAlignment = HorizontalAlignment.Left
             };
+        }
+
+        /// <summary>详细布局显示的指标名：去掉分组前缀（分组已由色块表达）</summary>
+        private static string DisplayName(MetricDef def)
+        {
+            string n = def.Name ?? "";
+            string g = def.Group ?? "";
+            if (g.Length > 0 && n.StartsWith(g + " ", StringComparison.Ordinal)) return n.Substring(g.Length + 1);
+            if (n.StartsWith("内存 ", StringComparison.Ordinal)) return n.Substring(3);
+            return n;
         }
 
         /// <summary>硬件厂商（用于分组配色）</summary>
@@ -431,6 +445,12 @@ namespace StatsOSD
         private Settings _cfg;
         private readonly List<Cell> _cells = new List<Cell>();
 
+        // 动态列宽（按当前实际数值宽度实时计算）
+        private readonly List<List<OutlinedText>> _stdCards = new List<List<OutlinedText>>();
+        private readonly List<ColumnDefinition> _detailCols = new List<ColumnDefinition>();
+        private readonly List<OutlinedText> _detailVals = new List<OutlinedText>();
+        private readonly Dictionary<OutlinedText, double> _appliedWidth = new Dictionary<OutlinedText, double>();
+
         /// <summary>文字描边画笔（关闭时返回 null）——由 OutlinedText 用几何轮廓描线实现</summary>
         private Brush OutlineBrush
         {
@@ -466,6 +486,10 @@ namespace StatsOSD
         {
             RowsPanel.Children.Clear();
             _cells.Clear();
+            _stdCards.Clear();
+            _detailCols.Clear();
+            _detailVals.Clear();
+            _appliedWidth.Clear();
             if (_cfg == null) return;
 
             List<MetricDef> metrics = Metrics.Resolve(_cfg.Metrics);
@@ -491,74 +515,98 @@ namespace StatsOSD
             return groups;
         }
 
-        /// <summary>标准布局：每组一块（整行被厂商色块包住），块内是组标签 + 各项数值</summary>
+        /// <summary>文本宽度实测（列宽估算用）</summary>
+        private double MeasureText(string text, double fontSize, bool bold)
+        {
+            try
+            {
+                var tf = new Typeface(new FontFamily(FontName), FontStyles.Normal,
+                    bold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
+                var ft = new FormattedText(text ?? "", System.Globalization.CultureInfo.CurrentUICulture,
+                    FlowDirection.LeftToRight, tf, fontSize, Brushes.White, 1.0);
+                return ft.Width;
+            }
+            catch { return fontSize * 3; }
+        }
+
+        /// <summary>最宽数值文本（含单位）的预估宽度</summary>
+        private double ValueWidth(MetricDef def, double valueSize, double smallScale)
+        {
+            string sample = string.IsNullOrEmpty(def.WidthSample) ? "888" : def.WidthSample;
+            double w = MeasureText(sample, valueSize, false);
+            if (!string.IsNullOrEmpty(def.Suffix))
+            {
+                string sfx = def.Suffix.Length >= 2 && char.IsLetter(def.Suffix[0]) ? " " + def.Suffix : def.Suffix;
+                w += MeasureText(sfx, valueSize * smallScale, false);
+            }
+            return w;
+        }
+
+        /// <summary>标准布局：每组一块（卡片），块内是型号 + 各项数值；列宽按本卡最坏情况计算</summary>
         private void BuildStandard(List<MetricDef> metrics, double baseSize)
         {
+            List<List<MetricDef>> groups = GroupByOrder(metrics);
+            double valueSize = baseSize * 0.68;
+
             int rowIndex = 0;
-            foreach (List<MetricDef> group in GroupByOrder(metrics))
+            foreach (List<MetricDef> group in groups)
             {
+                // 本卡的列宽（不跨卡共享，避免被别行的长值撑出空隙）
+                var colWidth = new double[group.Count];
+                for (int i = 0; i < group.Count; i++)
+                    colWidth[i] = Math.Max(ValueWidth(group[i], valueSize, 0.78) + 3 * Scale, 22 * Scale);
                 var row = new StackPanel
                 {
                     Orientation = Orientation.Horizontal
                 };
-                // 色块内容 = 第一行（标签+数值）+ 第二行（硬件型号，标准/详细布局都显示）
+                // 色块内容 = 第一行（硬件型号）+ 第二行（标签与数值）
                 var content = new StackPanel();
+                string model = ModelFor(group[0].Group);
+                if (!string.IsNullOrEmpty(model))
+                {
+                    OutlinedText mt = MakeModelText(model, baseSize);
+                    mt.Margin = new Thickness(0, 0, 0, 2 * Scale);
+                    content.Children.Add(mt);
+                }
                 content.Children.Add(row);
 
                 var block = new Border
                 {
                     Background = Tint(GroupColor(group[0].Group), BlockAlpha),
-                    Padding = new Thickness(6 * Scale, 3 * Scale, 6 * Scale, 3 * Scale),
+                    Padding = new Thickness(7 * Scale, 4 * Scale, 7 * Scale, 4 * Scale),
                     CornerRadius = new CornerRadius(0),
                     Child = content
                 };
 
-                var label = new OutlinedText
-                {
-                    Text = group[0].Group,
-                    FontName = FontName,
-                    FontSize = baseSize * 0.58,
-                    FontWeight = FontWeights.Bold,
-                    TextBrush = Brushes.White,
-                    StrokeBrush = OutlineBrush,
-                    StrokeThickness = 2.0 * Scale,
-                    MinWidth = 30 * Scale,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                row.Children.Add(label);
-
                 bool first = true;
-                foreach (MetricDef def in group)
+                var cardCells = new List<OutlinedText>();
+                for (int i = 0; i < group.Count; i++)
                 {
+                    MetricDef def = group[i];
                     var tb = new OutlinedText
                     {
                         FontName = FontName,
-                        FontSize = baseSize * 0.68,
+                        FontSize = valueSize,
                         FontWeight = FontWeights.Normal,
                         TextBrush = BrCool,
                         SuffixBrush = BrUnit,
                         StrokeBrush = OutlineBrush,
                         StrokeThickness = 2.0 * Scale,
                         SmallScale = 0.78,
-                        Alignment = TextAlignment.Right,
-                        MinWidth = 34 * Scale,
-                        Margin = new Thickness(first ? 0 : 8 * Scale, 0, 0, 0),
+                        Alignment = TextAlignment.Left,
+                        Width = colWidth[i],
+                        Margin = new Thickness(first ? 0 : 6 * Scale, 0, 0, 0),
                         VerticalAlignment = VerticalAlignment.Center
                     };
+                    _appliedWidth[tb] = colWidth[i];
+                    cardCells.Add(tb);
                     _cells.Add(new Cell { Def = def, Value = tb });
                     row.Children.Add(tb);
                     first = false;
                 }
+                _stdCards.Add(cardCells);
 
                 RowsPanel.Children.Add(block);
-
-                string model = ModelFor(group[0].Group);
-                if (!string.IsNullOrEmpty(model) && block.Child is StackPanel sp)
-                {
-                    OutlinedText mt = MakeModelText(model, baseSize);
-                    mt.Margin = new Thickness(0, 1 * Scale, 0, 1 * Scale);
-                    sp.Children.Add(mt);
-                }
                 rowIndex++;
             }
         }
@@ -575,20 +623,7 @@ namespace StatsOSD
                 if (def == null) def = group[0];
 
                 var cell = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-                // 迷你布局：标签与数值同字号，保证两者基线完全对齐
-                cell.Children.Add(new OutlinedText
-                {
-                    Text = def.Group,
-                    FontName = FontName,
-                    FontSize = baseSize * 0.68,
-                    FontWeight = FontWeights.Bold,
-                    TextBrush = Brushes.White,
-                    StrokeBrush = OutlineBrush,
-                    StrokeThickness = 2.0 * Scale,
-                    Margin = new Thickness(0, 0, 5 * Scale, 0),
-                    VerticalAlignment = VerticalAlignment.Center
-                });
-
+                // 迷你布局不再显示分组名（色块本身即分组标识）
                 var tb = new OutlinedText
                 {
                     FontName = FontName,
@@ -615,9 +650,33 @@ namespace StatsOSD
             RowsPanel.Children.Add(row);
         }
 
-        /// <summary>详细布局：每个指标一行，左侧完整名称、右侧数值</summary>
+        /// <summary>详细布局名称列宽：按最长名称实测（上限 200*缩放）</summary>
+        private double MeasureNameWidth(List<MetricDef> metrics, double baseSize)
+        {
+            double max = 60 * Scale;
+            var typeface = new Typeface(new FontFamily(FontName), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+            foreach (MetricDef def in metrics)
+            {
+                try
+                {
+                    var ft = new FormattedText(DisplayName(def), System.Globalization.CultureInfo.CurrentUICulture,
+                        FlowDirection.LeftToRight, typeface, 11.5 * Scale, Brushes.White, 1.0);
+                    if (ft.Width > max) max = ft.Width;
+                }
+                catch { }
+            }
+            return Math.Min(max + 12 * Scale, 200 * Scale);
+        }
+
+        /// <summary>详细布局：每个指标一行，左侧完整名称、右侧数值（名称列宽按最长名称自动计算）</summary>
         private void BuildDetailed(List<MetricDef> metrics, double baseSize)
         {
+            double nameWidth = MeasureNameWidth(metrics, baseSize);
+            // 数值列用实测最坏宽度（星号列在 SizeToContent 下会塌成 0 宽，导致数值压到名称上）
+            double detailedValueSize = baseSize * 0.68;
+            double valWidth = 0;
+            foreach (MetricDef d in metrics) valWidth = Math.Max(valWidth, ValueWidth(d, detailedValueSize, 0.78));
+            valWidth = Math.Max(valWidth + 3 * Scale, 40 * Scale);
             int rowIndex = 0;
             string lastGroup = null;
             foreach (MetricDef def in metrics)
@@ -644,16 +703,19 @@ namespace StatsOSD
                 {
                     Background = Tint(GroupColor(def.Group), BlockAlpha)
                 };
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84 * Scale) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(nameWidth) });
+                // 数值列宽 = 最坏数值宽度 + 右侧留白（留白必须计入列宽，否则内容会溢出被裁）
+                var valCol = new ColumnDefinition { Width = new GridLength(valWidth + 14 * Scale) };
+                grid.ColumnDefinitions.Add(valCol);
+                _detailCols.Add(valCol);
 
                 var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6 * Scale, 2 * Scale, 0, 2 * Scale) };
                 nameRow.Children.Add(new OutlinedText
                 {
-                    Text = def.Name,
+                    Text = DisplayName(def),
                     FontName = FontName,
                     FontSize = 11.5 * Scale,
-                    TextBrush = Brushes.White,
+                    TextBrush = BrGroupName,
                     StrokeBrush = OutlineBrush,
                     StrokeThickness = 2.0 * Scale,
                     VerticalAlignment = VerticalAlignment.Center
@@ -663,18 +725,22 @@ namespace StatsOSD
                 var val = new OutlinedText
                 {
                     FontName = FontName,
-                    FontSize = baseSize * 0.68,
+                    FontSize = detailedValueSize,
                     FontWeight = FontWeights.Normal,
                     TextBrush = BrCool,
                     SuffixBrush = BrUnit,
                     StrokeBrush = OutlineBrush,
                     StrokeThickness = 2.0 * Scale,
                     SmallScale = 0.78,
-                    Alignment = TextAlignment.Right,
-                    Margin = new Thickness(0, 2 * Scale, 6 * Scale, 2 * Scale),
+                    Alignment = TextAlignment.Left,
+                    Width = valWidth,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Margin = new Thickness(0, 2 * Scale, 14 * Scale, 2 * Scale),
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(val, 1);
+                _detailVals.Add(val);
+                _appliedWidth[val] = valWidth;
 
                 _cells.Add(new Cell { Def = def, Value = val });
                 grid.Children.Add(nameRow);
@@ -710,6 +776,51 @@ namespace StatsOSD
             {
                 Warn.Visibility = Visibility.Collapsed;
             }
+
+            ApplyDynamicWidths();
+        }
+
+        /// <summary>按当前实际数值宽度重算列宽：加宽立即生效，明显变窄才收缩（避免位数变化时来回跳）</summary>
+        private void ApplyDynamicWidths()
+        {
+            foreach (List<OutlinedText> card in _stdCards)
+            {
+                // 每个数值各按自身实际宽度（不取卡内最大值，否则短值会被撑出空隙）
+                foreach (OutlinedText t in card) SetCellWidth(t, TextWidthOf(t) + 3 * Scale);
+            }
+
+            if (_detailVals.Count > 0)
+            {
+                double max = 0;
+                foreach (OutlinedText t in _detailVals) max = Math.Max(max, TextWidthOf(t));
+                double want = max + 3 * Scale;
+                foreach (OutlinedText t in _detailVals) SetCellWidth(t, want);
+                foreach (ColumnDefinition cd in _detailCols)
+                {
+                    double colWant = want + 14 * Scale;
+                    if (Math.Abs(cd.Width.Value - colWant) > 1) cd.Width = new GridLength(colWant);
+                }
+            }
+        }
+
+        private double TextWidthOf(OutlinedText t)
+        {
+            double w = MeasureText(t.Text, t.FontSize, t.FontWeight == FontWeights.Bold);
+            if (!string.IsNullOrEmpty(t.Suffix)) w += MeasureText(t.Suffix, t.FontSize * t.SmallScale, false);
+            return w;
+        }
+
+        private void SetCellWidth(OutlinedText t, double want)
+        {
+            double cur;
+            if (_appliedWidth.TryGetValue(t, out cur))
+            {
+                bool grow = want > cur + 0.5;
+                bool shrink = want < cur - 2 * Scale;   // 略微变窄就收紧，避免出现明显空隙
+                if (!grow && !shrink) return;
+            }
+            t.Width = want;
+            _appliedWidth[t] = want;
         }
 
         private static double? SafeGet(MetricDef def, Sample s)
