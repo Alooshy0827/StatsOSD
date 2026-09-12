@@ -692,7 +692,10 @@ namespace StatsOSD
                 OutlinedText ot = c.Value;
                 ot.Prefix = c.ShowGroupLabel ? c.Def.Group + " " : "";
                 ot.Text = c.Def.Text != null ? c.Def.Text(s) : Metrics.Format(c.Def, v);
-                ot.Suffix = v.HasValue ? c.Def.Suffix : "";
+                // 多字母单位（GB/MB/MHz/RPM）前留一个空格，符号单位（°C %）保持紧凑
+                string sfx = c.Def.Suffix ?? "";
+                if (sfx.Length >= 2 && char.IsLetter(sfx[0])) sfx = " " + sfx;
+                ot.Suffix = v.HasValue ? sfx : "";
                 ot.TextBrush = ColorFor(c.Def, v);
                 ot.SuffixBrush = BrUnit;
             }
