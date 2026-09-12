@@ -40,6 +40,13 @@ namespace StatsOSD
         private static readonly SolidColorBrush BrUnit = MakeBrush("#FF78808F");
         private static readonly SolidColorBrush BrDrag = MakeBrush("#FF4DD2FF");
 
+        // 厂商分组配色：Intel 蓝 / AMD 橙红 / NVIDIA 绿
+        private static readonly SolidColorBrush BrIntel = MakeBrush("#FF0071C5");
+        private static readonly SolidColorBrush BrAmd = MakeBrush("#FFE8452C");
+        private static readonly SolidColorBrush BrNvidia = MakeBrush("#FF76B900");
+        private static readonly SolidColorBrush BrGroupNeutral = MakeBrush("#FF3C4657");
+        private static readonly SolidColorBrush BrModel = MakeBrush("#D9FFFFFF");
+
         /// <summary>文字描边：零偏移 + 小半径阴影 = 一圈均匀的深色描边（背景透明时保证可读性）</summary>
         private static readonly System.Windows.Media.Effects.DropShadowEffect OutlineEffect = CreateOutlineEffect();
 
@@ -69,6 +76,106 @@ namespace StatsOSD
 
         /// <summary>拖动结束回调，参数为最终位置（DIP）</summary>
         public Action<double, double> DragFinished { get; set; }
+
+        /// <summary>双击面板时的动作（由 App 注入）</summary>
+        public Action DoubleClicked { get; set; }
+
+        private string _cpuVendor = "";
+        private string _gpuVendor = "";
+        private string _cpuModel = "";
+        private string _gpuModel = "";
+        private int _blockAlpha = 50;
+
+        /// <summary>硬件型号（显示在色块内）</summary>
+        public void SetModels(string cpu, string gpu)
+        {
+            if (_cpuModel == cpu && _gpuModel == gpu) return;
+            _cpuModel = cpu ?? "";
+            _gpuModel = gpu ?? "";
+            BuildContent();
+        }
+
+        private string ModelFor(string group)
+        {
+            if (group == "CPU") return _cpuModel;
+            if (group == "GPU") return _gpuModel;
+            return "";
+        }
+
+        private OutlinedText MakeModelText(string model, double baseSize)
+        {
+            return new OutlinedText
+            {
+                Text = model,
+                FontName = FontName,
+                FontSize = baseSize * 0.5,
+                TextBrush = BrModel,
+                StrokeBrush = OutlineBrush,
+                StrokeThickness = 1.6 * Scale,
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+        }
+
+        /// <summary>硬件厂商（用于分组配色）</summary>
+        public void SetVendors(string cpu, string gpu)
+        {
+            if (_cpuVendor == cpu && _gpuVendor == gpu) return;
+            _cpuVendor = cpu ?? "";
+            _gpuVendor = gpu ?? "";
+            BuildContent();
+        }
+
+        private Brush GroupColor(string group)
+        {
+            if (group == "CPU") return VendorBrush(_cpuVendor);
+            if (group == "GPU") return VendorBrush(_gpuVendor);
+            return BrGroupNeutral;
+        }
+
+        private static Brush VendorBrush(string vendor)
+        {
+            if (vendor == "Intel") return BrIntel;
+            if (vendor == "AMD") return BrAmd;
+            if (vendor == "NVIDIA") return BrNvidia;
+            return BrGroupNeutral;
+        }
+
+        /// <summary>分组标签色块（半透明底色，包住该硬件的全部信息）</summary>
+        private Border MakeGroupBlock(string group, double fontSize)
+        {
+            return new Border
+            {
+                Background = Tint(GroupColor(group), 0x66),
+                CornerRadius = new CornerRadius(4 * Scale),
+                Padding = new Thickness(6 * Scale, 2 * Scale, 6 * Scale, 2 * Scale),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Child = new OutlinedText
+                {
+                    Text = group,
+                    FontName = FontName,
+                    FontSize = fontSize,
+                    FontWeight = FontWeights.Bold,
+                    TextBrush = Brushes.White
+                }
+            };
+        }
+
+        private static readonly Dictionary<uint, SolidColorBrush> _tintCache = new Dictionary<uint, SolidColorBrush>();
+
+        /// <summary>把颜色按指定 alpha 变淡（用于行底色）</summary>
+        private static SolidColorBrush Tint(Brush baseBrush, byte alpha)
+        {
+            var scb = baseBrush as SolidColorBrush;
+            Color c = scb != null ? scb.Color : Color.FromRgb(0x3C, 0x46, 0x57);
+            uint key = ((uint)c.R << 24) | ((uint)c.G << 16) | ((uint)c.B << 8) | alpha;
+            SolidColorBrush cached;
+            if (_tintCache.TryGetValue(key, out cached)) return cached;
+            var nb = new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
+            nb.Freeze();
+            _tintCache[key] = nb;
+            return nb;
+        }
 
         public bool IsDragMode { get { return _dragMode; } }
 
@@ -163,6 +270,15 @@ namespace StatsOSD
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonDown(e);
+
+            // 双击动作（鼠标穿透关闭时可用）
+            if (e.ClickCount == 2 && DoubleClicked != null)
+            {
+                DoubleClicked();
+                e.Handled = true;
+                return;
+            }
+
             if (!_dragMode) return;
             _dragging = true;
             // 用屏幕绝对坐标计算位移：不依赖窗口自身位置，避免拖动时的反馈震荡
@@ -237,13 +353,19 @@ namespace StatsOSD
             App.Log("free position applied: " + x.ToString("0") + "," + y.ToString("0"));
         }
 
-        /// <summary>设置面板背景不透明度（0-100，只影响背景层，文字保持清晰）</summary>
+        /// <summary>色块不透明度（0-100，由设置里的"透明度"控制；面板本身无底色）</summary>
         public void SetBackgroundAlpha(int percent)
         {
             int p = Math.Max(0, Math.Min(100, percent));
-            var brush = new SolidColorBrush(Color.FromArgb((byte)(p * 255 / 100), 0x13, 0x19, 0x1E));
-            brush.Freeze();
-            Card.Background = brush;
+            if (p == _blockAlpha) return;
+            _blockAlpha = p;
+            Card.Background = Brushes.Transparent;
+            BuildContent();
+        }
+
+        private byte BlockAlpha
+        {
+            get { return (byte)(Math.Max(0, Math.Min(100, _blockAlpha)) * 255 / 100); }
         }
 
         public OverlayWindow()
@@ -369,59 +491,74 @@ namespace StatsOSD
             return groups;
         }
 
-        /// <summary>标准布局：每组一行，行首是组标签，行内依次是各项数值</summary>
+        /// <summary>标准布局：每组一块（整行被厂商色块包住），块内是组标签 + 各项数值</summary>
         private void BuildStandard(List<MetricDef> metrics, double baseSize)
         {
             int rowIndex = 0;
             foreach (List<MetricDef> group in GroupByOrder(metrics))
             {
-                var grid = new Grid { Margin = new Thickness(0, rowIndex == 0 ? 0 : 2 * Scale, 0, 0) };
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30 * Scale) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var row = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal
+                };
+                // 色块内容 = 第一行（标签+数值）+ 第二行（硬件型号，标准/详细布局都显示）
+                var content = new StackPanel();
+                content.Children.Add(row);
+
+                var block = new Border
+                {
+                    Background = Tint(GroupColor(group[0].Group), BlockAlpha),
+                    Padding = new Thickness(6 * Scale, 3 * Scale, 6 * Scale, 3 * Scale),
+                    CornerRadius = new CornerRadius(0),
+                    Child = content
+                };
 
                 var label = new OutlinedText
                 {
                     Text = group[0].Group,
                     FontName = FontName,
-                    FontSize = 11.5 * Scale,
+                    FontSize = baseSize * 0.58,
                     FontWeight = FontWeights.Bold,
-                    TextBrush = BrLabel,
+                    TextBrush = Brushes.White,
                     StrokeBrush = OutlineBrush,
                     StrokeThickness = 2.0 * Scale,
+                    MinWidth = 30 * Scale,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                Grid.SetColumn(label, 0);
-
-                var values = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(values, 1);
+                row.Children.Add(label);
 
                 bool first = true;
                 foreach (MetricDef def in group)
                 {
-                    bool primary = def.Style == MetricStyle.Primary;
                     var tb = new OutlinedText
                     {
                         FontName = FontName,
-                        FontSize = primary ? baseSize : baseSize * 0.63,
-                        FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
+                        FontSize = baseSize * 0.68,
+                        FontWeight = FontWeights.Normal,
                         TextBrush = BrCool,
                         SuffixBrush = BrUnit,
                         StrokeBrush = OutlineBrush,
-                        StrokeThickness = 2.2 * Scale,
-                        SmallScale = primary ? 0.58 : 0.8,
+                        StrokeThickness = 2.0 * Scale,
+                        SmallScale = 0.78,
                         Alignment = TextAlignment.Right,
-                        MinWidth = (primary ? 44 : 32) * Scale,
+                        MinWidth = 34 * Scale,
                         Margin = new Thickness(first ? 0 : 8 * Scale, 0, 0, 0),
                         VerticalAlignment = VerticalAlignment.Center
                     };
                     _cells.Add(new Cell { Def = def, Value = tb });
-                    values.Children.Add(tb);
+                    row.Children.Add(tb);
                     first = false;
                 }
 
-                grid.Children.Add(label);
-                grid.Children.Add(values);
-                RowsPanel.Children.Add(grid);
+                RowsPanel.Children.Add(block);
+
+                string model = ModelFor(group[0].Group);
+                if (!string.IsNullOrEmpty(model) && block.Child is StackPanel sp)
+                {
+                    OutlinedText mt = MakeModelText(model, baseSize);
+                    mt.Margin = new Thickness(0, 1 * Scale, 0, 1 * Scale);
+                    sp.Children.Add(mt);
+                }
                 rowIndex++;
             }
         }
@@ -437,21 +574,42 @@ namespace StatsOSD
                 foreach (MetricDef d in group) { if (d.Style == MetricStyle.Primary) { def = d; break; } }
                 if (def == null) def = group[0];
 
+                var cell = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                // 迷你布局：标签与数值同字号，保证两者基线完全对齐
+                cell.Children.Add(new OutlinedText
+                {
+                    Text = def.Group,
+                    FontName = FontName,
+                    FontSize = baseSize * 0.68,
+                    FontWeight = FontWeights.Bold,
+                    TextBrush = Brushes.White,
+                    StrokeBrush = OutlineBrush,
+                    StrokeThickness = 2.0 * Scale,
+                    Margin = new Thickness(0, 0, 5 * Scale, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
                 var tb = new OutlinedText
                 {
                     FontName = FontName,
-                    FontSize = baseSize * 0.95,
-                    FontWeight = FontWeights.Bold,
+                    FontSize = baseSize * 0.68,
+                    FontWeight = FontWeights.Normal,
                     TextBrush = BrCool,
                     SuffixBrush = BrUnit,
                     StrokeBrush = OutlineBrush,
-                    StrokeThickness = 2.2 * Scale,
-                    SmallScale = 0.62,
-                    Margin = new Thickness(first ? 0 : 12 * Scale, 0, 0, 0),
+                    StrokeThickness = 2.0 * Scale,
+                    SmallScale = 0.78,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                _cells.Add(new Cell { Def = def, Value = tb, ShowGroupLabel = true });
-                row.Children.Add(tb);
+                _cells.Add(new Cell { Def = def, Value = tb });
+                cell.Children.Add(tb);
+                row.Children.Add(new Border
+                {
+                    Background = Tint(GroupColor(def.Group), BlockAlpha),
+                    CornerRadius = new CornerRadius(0),
+                    Padding = new Thickness(6 * Scale, 3 * Scale, 6 * Scale, 3 * Scale),
+                    Child = cell
+                });
                 first = false;
             }
             RowsPanel.Children.Add(row);
@@ -461,42 +619,65 @@ namespace StatsOSD
         private void BuildDetailed(List<MetricDef> metrics, double baseSize)
         {
             int rowIndex = 0;
+            string lastGroup = null;
             foreach (MetricDef def in metrics)
             {
-                var grid = new Grid { Margin = new Thickness(0, rowIndex == 0 ? 0 : 3 * Scale, 0, 0) };
+                // 换组时先插入一条"硬件型号"行（归属于该组的色块）
+                if (def.Group != lastGroup)
+                {
+                    lastGroup = def.Group;
+                    string model = ModelFor(def.Group);
+                    if (!string.IsNullOrEmpty(model))
+                    {
+                        OutlinedText mt = MakeModelText(model, baseSize);
+                        mt.Margin = new Thickness(6 * Scale, 2 * Scale, 6 * Scale, 2 * Scale);
+                        RowsPanel.Children.Add(new Border
+                        {
+                            Background = Tint(GroupColor(def.Group), BlockAlpha),
+                            CornerRadius = new CornerRadius(0),
+                            Child = mt
+                        });
+                    }
+                }
+
+                var grid = new Grid
+                {
+                    Background = Tint(GroupColor(def.Group), BlockAlpha)
+                };
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84 * Scale) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-                var name = new OutlinedText
+                var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6 * Scale, 2 * Scale, 0, 2 * Scale) };
+                nameRow.Children.Add(new OutlinedText
                 {
                     Text = def.Name,
                     FontName = FontName,
                     FontSize = 11.5 * Scale,
-                    TextBrush = BrLabel,
+                    TextBrush = Brushes.White,
                     StrokeBrush = OutlineBrush,
                     StrokeThickness = 2.0 * Scale,
                     VerticalAlignment = VerticalAlignment.Center
-                };
-                Grid.SetColumn(name, 0);
+                });
+                Grid.SetColumn(nameRow, 0);
 
-                bool primary = def.Style == MetricStyle.Primary;
                 var val = new OutlinedText
                 {
                     FontName = FontName,
-                    FontSize = primary ? baseSize : baseSize * 0.78,
-                    FontWeight = primary ? FontWeights.Bold : FontWeights.Normal,
+                    FontSize = baseSize * 0.68,
+                    FontWeight = FontWeights.Normal,
                     TextBrush = BrCool,
                     SuffixBrush = BrUnit,
                     StrokeBrush = OutlineBrush,
-                    StrokeThickness = 2.2 * Scale,
-                    SmallScale = 0.62,
+                    StrokeThickness = 2.0 * Scale,
+                    SmallScale = 0.78,
                     Alignment = TextAlignment.Right,
+                    Margin = new Thickness(0, 2 * Scale, 6 * Scale, 2 * Scale),
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(val, 1);
 
                 _cells.Add(new Cell { Def = def, Value = val });
-                grid.Children.Add(name);
+                grid.Children.Add(nameRow);
                 grid.Children.Add(val);
                 RowsPanel.Children.Add(grid);
                 rowIndex++;
@@ -510,7 +691,7 @@ namespace StatsOSD
                 double? v = SafeGet(c.Def, s);
                 OutlinedText ot = c.Value;
                 ot.Prefix = c.ShowGroupLabel ? c.Def.Group + " " : "";
-                ot.Text = Metrics.Format(c.Def, v);
+                ot.Text = c.Def.Text != null ? c.Def.Text(s) : Metrics.Format(c.Def, v);
                 ot.Suffix = v.HasValue ? c.Def.Suffix : "";
                 ot.TextBrush = ColorFor(c.Def, v);
                 ot.SuffixBrush = BrUnit;

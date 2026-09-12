@@ -30,6 +30,8 @@ namespace StatsOSD
         private long _lastSampleTicksUtc;
         private int _sampling;
         private bool _sensorsOpened;
+        private bool _vendorsApplied;
+        private string _vendorArgCpu, _vendorArgGpu;
         private bool _stallLogged;
         private System.Threading.Mutex _singleInstance;
 
@@ -64,10 +66,21 @@ namespace StatsOSD
 
             _cfg = Settings.Load();
             _demo = HasFlag(e.Args, "--demo");
+
+            // 演示/截图用：--vendors AMD,NVIDIA 覆盖厂商识别（影响分组配色）
+            string vendors = ParseArg(e.Args, "--vendors");
+            if (!string.IsNullOrEmpty(vendors))
+            {
+                string[] parts = vendors.Split(',');
+                if (parts.Length > 0) _vendorArgCpu = parts[0].Trim();
+                if (parts.Length > 1) _vendorArgGpu = parts[1].Trim();
+                Log("vendor override: cpu=" + _vendorArgCpu + " gpu=" + _vendorArgGpu);
+            }
             BuildTray();
 
             _overlay = new OverlayWindow();
             _overlay.ApplyConfig(_cfg);
+            _overlay.DoubleClicked = OpenTaskManager;
             _overlay.SetPassthrough(_cfg.ClickThrough);
             _overlay.SetBackgroundAlpha(_cfg.BackgroundAlpha);
             _overlay.IsVisibleChanged += (s, a) => { if (_miVisible != null) _miVisible.Text = _overlay.IsVisible ? "隐藏 OSD" : "显示 OSD"; };
@@ -241,7 +254,8 @@ namespace StatsOSD
                 GpuVram = 6144,
                 GpuFan = 68,
                 MemPercent = 63,
-                MemUsedGb = 19.7
+                MemUsedGb = 19.7,
+                MemTotalGb = 32.0
             };
         }
 
@@ -262,6 +276,23 @@ namespace StatsOSD
 
         private void OnTick(object sender, EventArgs e)
         {
+            // 硬件厂商拿到后应用一次（用于分组配色）
+            if (!_vendorsApplied)
+            {
+                string cpuV = !string.IsNullOrEmpty(_vendorArgCpu) ? _vendorArgCpu : (_demo ? "Intel" : null);
+                string gpuV = !string.IsNullOrEmpty(_vendorArgGpu) ? _vendorArgGpu : (_demo ? "NVIDIA" : null);
+                if (_demo || _sensorsOpened)
+                {
+                    _vendorsApplied = true;
+                    string cpuF = cpuV ?? _sensors.CpuVendor;
+                    string gpuF = gpuV ?? _sensors.GpuVendor;
+                    _overlay.SetVendors(cpuF, gpuF);
+                    _overlay.SetModels(
+                        _demo ? DemoModel(cpuF) : _sensors.CpuName,
+                        _demo ? DemoModel(gpuF) : _sensors.GpuName);
+                }
+            }
+
             Sample s = _latest;
             if (s == null)
             {
@@ -713,6 +744,26 @@ namespace StatsOSD
                 }
                 catch { }
             }
+        }
+
+        /// <summary>演示模式下的示例型号</summary>
+        private static string DemoModel(string vendor)
+        {
+            if (vendor == "Intel") return "Intel Core Ultra 9 275HX";
+            if (vendor == "AMD") return "AMD Ryzen 9 9950X3D";
+            if (vendor == "NVIDIA") return "NVIDIA GeForce RTX 5080";
+            return "";
+        }
+
+        /// <summary>双击面板：打开任务管理器</summary>
+        private void OpenTaskManager()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("taskmgr.exe") { UseShellExecute = true });
+                Log("double click -> task manager");
+            }
+            catch (Exception ex) { Log("open task manager error: " + ex.Message); }
         }
 
         private void DumpSensorsToFile()

@@ -15,9 +15,9 @@
         TextOptions.TextFormattingMode="Display">
     <Border x:Name="Card"
             CornerRadius="9"
-            Background="#E613131E"
+            Background="Transparent"
             BorderThickness="0"
-            Padding="10,7">
+            Padding="6,4">
         <StackPanel x:Name="ContentStack">
             <!-- 数据区：内容由配置动态生成（见 OverlayWindow.BuildContent） -->
             <StackPanel x:Name="RowsPanel" />

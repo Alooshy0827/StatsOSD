@@ -20,6 +20,7 @@ namespace StatsOSD
         public double? GpuFan;
         public double? MemPercent;
         public double? MemUsedGb;
+        public double? MemTotalGb;
         public string Warn;
 
         public bool HasAny
@@ -45,6 +46,22 @@ namespace StatsOSD
         private readonly List<IHardware> _cpus = new List<IHardware>();
         private readonly List<IHardware> _gpus = new List<IHardware>();
         private bool _opened;
+
+        /// <summary>硬件厂商（用于分组配色）：Intel / AMD / NVIDIA / 空</summary>
+        public string CpuVendor { get; private set; } = "";
+        public string GpuVendor { get; private set; } = "";
+
+        /// <summary>硬件型号（显示在色块内）</summary>
+        public string CpuName { get; private set; } = "";
+        public string GpuName { get; private set; } = "";
+
+        private static string DetectCpuVendor(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            if (name.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0) return "Intel";
+            if (name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0) return "AMD";
+            return "";
+        }
 
         public void Open()
         {
@@ -74,7 +91,19 @@ namespace StatsOSD
                         _gpus.Add(hw);
                 }
                 _opened = true;
-                App.Log("sensors open ok: cpus=" + _cpus.Count + ", gpus=" + _gpus.Count);
+                CpuVendor = _cpus.Count > 0 ? DetectCpuVendor(_cpus[0].Name) : "";
+                CpuName = _cpus.Count > 0 ? _cpus[0].Name : "";
+                if (_gpus.Count > 0)
+                {
+                    HardwareType t = _gpus[0].HardwareType;
+                    GpuVendor = t == HardwareType.GpuNvidia ? "NVIDIA"
+                              : t == HardwareType.GpuAmd ? "AMD"
+                              : t == HardwareType.GpuIntel ? "Intel" : "";
+                    GpuName = _gpus[0].Name;
+                }
+                App.Log("sensors open ok: cpus=" + _cpus.Count + ", gpus=" + _gpus.Count
+                        + ", cpuVendor=" + (CpuVendor == "" ? "?" : CpuVendor)
+                        + ", gpuVendor=" + (GpuVendor == "" ? "?" : GpuVendor));
             }
             catch (Exception ex)
             {
@@ -123,6 +152,7 @@ namespace StatsOSD
             double?[] mem = ReadMemory();
             r.MemPercent = mem[0];
             r.MemUsedGb = mem[1];
+            r.MemTotalGb = mem[2];
 
             if (!r.HasAny)
             {
@@ -272,20 +302,20 @@ namespace StatsOSD
         [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GlobalMemoryStatusEx(MEMORYSTATUSEX lpBuffer);
 
-        /// <summary>返回 [占用百分比, 已用 GB]</summary>
+        /// <summary>返回 [占用百分比, 已用 GB, 总量 GB]</summary>
         private static double?[] ReadMemory()
         {
             try
             {
                 var st = new MEMORYSTATUSEX();
-                if (!GlobalMemoryStatusEx(st)) return new double?[] { null, null };
+                if (!GlobalMemoryStatusEx(st)) return new double?[] { null, null, null };
                 double totalGb = st.ullTotalPhys / 1024.0 / 1024.0 / 1024.0;
                 double usedGb = (st.ullTotalPhys - st.ullAvailPhys) / 1024.0 / 1024.0 / 1024.0;
-                return new double?[] { st.dwMemoryLoad, Math.Round(usedGb, 1) };
+                return new double?[] { st.dwMemoryLoad, Math.Round(usedGb, 1), Math.Round(totalGb, 1) };
             }
             catch
             {
-                return new double?[] { null, null };
+                return new double?[] { null, null, null };
             }
         }
 

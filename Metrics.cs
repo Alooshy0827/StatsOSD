@@ -30,6 +30,9 @@ namespace StatsOSD
         public MetricKind Kind;
         public MetricStyle Style;
         public Func<Sample, double?> Get;
+
+        /// <summary>可选：自定义显示文本（如 "19.7/32.0"）；为空则按数值+小数位格式化</summary>
+        public Func<Sample, string> Text;
     }
 
     /// <summary>
@@ -61,13 +64,14 @@ namespace StatsOSD
             M("gpu.vram",    "GPU",  "显存占用", "MB",  0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuVram),
             M("gpu.fan",     "GPU",  "GPU 风扇", "%",   0, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.GpuFan),
 
-            // ---- 内存 ----
-            M("mem.percent", "内存", "内存占用", "%",   0, CMisc,  MetricKind.Normal,  MetricStyle.Primary,   s => s.MemPercent),
-            M("mem.used",    "内存", "内存已用", "GB",  1, CMisc,  MetricKind.Normal,  MetricStyle.Secondary, s => s.MemUsedGb)
+            // ---- 内存（分组名 Mem）----
+            M("mem.used",    "Mem",  "内存 已用/总量", "GB", 1, CMisc, MetricKind.Normal, MetricStyle.Primary,   s => s.MemUsedGb, MemUsedTotal),
+            M("mem.percent", "Mem",  "内存占用率",     "%",  0, CMisc, MetricKind.Normal, MetricStyle.Secondary, s => s.MemPercent)
         };
 
         private static MetricDef M(string id, string group, string name, string suffix, int decimals,
-                                   string colorHex, MetricKind kind, MetricStyle style, Func<Sample, double?> get)
+                                   string colorHex, MetricKind kind, MetricStyle style, Func<Sample, double?> get,
+                                   Func<Sample, string> text = null)
         {
             return new MetricDef
             {
@@ -79,8 +83,17 @@ namespace StatsOSD
                 ColorHex = colorHex,
                 Kind = kind,
                 Style = style,
-                Get = get
+                Get = get,
+                Text = text
             };
+        }
+
+        /// <summary>"已用/总量" 形式（如 19.7/32.0）</summary>
+        private static string MemUsedTotal(Sample s)
+        {
+            if (!s.MemUsedGb.HasValue) return "--";
+            if (!s.MemTotalGb.HasValue) return s.MemUsedGb.Value.ToString("0.#");
+            return s.MemUsedGb.Value.ToString("0.#") + "/" + s.MemTotalGb.Value.ToString("0.#");
         }
 
         public static MetricDef ById(string id)
@@ -88,10 +101,10 @@ namespace StatsOSD
             return All.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <summary>默认显示项（与历史版本外观一致）</summary>
+        /// <summary>默认显示项（CPU/GPU 温度功耗负载 + 内存 已用/总量）</summary>
         public static List<string> DefaultSelection()
         {
-            return new List<string> { "cpu.temp", "cpu.power", "cpu.load", "gpu.temp", "gpu.power", "gpu.load" };
+            return new List<string> { "cpu.temp", "cpu.power", "cpu.load", "gpu.temp", "gpu.power", "gpu.load", "mem.used" };
         }
 
         /// <summary>按配置里的顺序取出已启用指标（无效 ID 自动忽略）</summary>
