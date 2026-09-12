@@ -53,14 +53,21 @@ namespace StatsOSD
             DispatcherUnhandledException += (s, a) => { Log("unhandled: " + a.Exception); a.Handled = true; };
 
             // 单实例保护：避免出现两个面板/两个托盘图标，以及重复加载传感器驱动
-            bool isNewInstance;
-            _singleInstance = new System.Threading.Mutex(true, "StatsOSD_SingleInstance", out isNewInstance);
-            if (!isNewInstance)
+            // （自检类参数 --shot/--dump/--menu/--iconshot/--autostart/--traypos 不参与，方便诊断截图）
+            bool toolMode = HasFlag(e.Args, "--shot") || HasFlag(e.Args, "--iconshot") || HasFlag(e.Args, "--dump")
+                         || ParseArg(e.Args, "--menu") != null || ParseArg(e.Args, "--autostart") != null
+                         || ParseArg(e.Args, "--traypos") != null;
+            if (!toolMode)
             {
-                WF.MessageBox.Show("StatsOSD 已经在运行（请查看任务栏托盘图标）。", "StatsOSD",
-                    WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Information);
-                Shutdown();
-                return;
+                bool isNewInstance;
+                _singleInstance = new System.Threading.Mutex(true, "StatsOSD_SingleInstance", out isNewInstance);
+                if (!isNewInstance)
+                {
+                    WF.MessageBox.Show("StatsOSD 已经在运行（请查看任务栏托盘图标）。", "StatsOSD",
+                        WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Information);
+                    Shutdown();
+                    return;
+                }
             }
 
             RotateLogIfNeeded();

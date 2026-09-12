@@ -678,27 +678,24 @@ namespace StatsOSD
             foreach (MetricDef d in metrics) valWidth = Math.Max(valWidth, ValueWidth(d, detailedValueSize, 0.78));
             valWidth = Math.Max(valWidth + 3 * Scale, 40 * Scale);
             int rowIndex = 0;
-            string lastGroup = null;
-            foreach (MetricDef def in metrics)
+            // 按分组归并后渲染：同一硬件的型号行只出现一次（配置里的指标顺序可能是交叉的）
+            foreach (List<MetricDef> group in GroupByOrder(metrics))
             {
-                // 换组时先插入一条"硬件型号"行（归属于该组的色块）
-                if (def.Group != lastGroup)
+                string model = ModelFor(group[0].Group);
+                if (!string.IsNullOrEmpty(model))
                 {
-                    lastGroup = def.Group;
-                    string model = ModelFor(def.Group);
-                    if (!string.IsNullOrEmpty(model))
+                    OutlinedText mt = MakeModelText(model, baseSize);
+                    mt.Margin = new Thickness(6 * Scale, 2 * Scale, 6 * Scale, 2 * Scale);
+                    RowsPanel.Children.Add(new Border
                     {
-                        OutlinedText mt = MakeModelText(model, baseSize);
-                        mt.Margin = new Thickness(6 * Scale, 2 * Scale, 6 * Scale, 2 * Scale);
-                        RowsPanel.Children.Add(new Border
-                        {
-                            Background = Tint(GroupColor(def.Group), BlockAlpha),
-                            CornerRadius = new CornerRadius(0),
-                            Child = mt
-                        });
-                    }
+                        Background = Tint(GroupColor(group[0].Group), BlockAlpha),
+                        CornerRadius = new CornerRadius(0),
+                        Child = mt
+                    });
                 }
 
+                foreach (MetricDef def in group)
+                {
                 var grid = new Grid
                 {
                     Background = Tint(GroupColor(def.Group), BlockAlpha)
@@ -742,11 +739,12 @@ namespace StatsOSD
                 _detailVals.Add(val);
                 _appliedWidth[val] = valWidth;
 
-                _cells.Add(new Cell { Def = def, Value = val });
-                grid.Children.Add(nameRow);
-                grid.Children.Add(val);
-                RowsPanel.Children.Add(grid);
-                rowIndex++;
+                    _cells.Add(new Cell { Def = def, Value = val });
+                    grid.Children.Add(nameRow);
+                    grid.Children.Add(val);
+                    RowsPanel.Children.Add(grid);
+                    rowIndex++;
+                }
             }
         }
 
