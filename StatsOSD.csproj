@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -13,12 +13,12 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
 
-    <!-- 版本与版权（显示在 exe 属性页、文件版本、产品版本） -->
-    <Version>1.2.0</Version>
+    <!-- 鐗堟湰涓庣増鏉冿紙鏄剧ず鍦?exe 灞炴€ч〉銆佹枃浠剁増鏈€佷骇鍝佺増鏈級 -->
+    <Version>1.2.1</Version>
     <Product>StatsOSD</Product>
     <Company>Alooshy0827</Company>
     <Copyright>Copyright (C) 2026 Alooshy0827. All rights reserved.</Copyright>
-    <Description>CPU/GPU 温度、功耗、负载 OSD 监控面板</Description>
+    <Description>CPU/GPU 娓╁害銆佸姛鑰椼€佽礋杞?OSD 鐩戞帶闈㈡澘</Description>
   </PropertyGroup>
 
   <ItemGroup>

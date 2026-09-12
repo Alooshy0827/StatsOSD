@@ -6,7 +6,7 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "StatsOSD/1.2.0": {
+      "StatsOSD/1.2.1": {
         "dependencies": {
           "LibreHardwareMonitorLib": "0.9.4.0"
         },
@@ -25,7 +25,7 @@
     }
   },
   "libraries": {
-    "StatsOSD/1.2.0": {
+    "StatsOSD/1.2.1": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
