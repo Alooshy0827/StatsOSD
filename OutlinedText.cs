@@ -41,13 +41,25 @@ namespace StatsOSD
         public Brush TextBrush
         {
             get { return _textBrush; }
-            set { _textBrush = value ?? Brushes.White; InvalidateVisual(); }
+            set
+            {
+                var brush = value ?? Brushes.White;
+                if (_textBrush == brush) return;
+                _textBrush = brush;
+                InvalidateVisual();
+            }
         }
 
         public Brush SuffixBrush
         {
             get { return _suffixBrush; }
-            set { _suffixBrush = value ?? Brushes.Gray; InvalidateVisual(); }
+            set
+            {
+                var brush = value ?? Brushes.Gray;
+                if (_suffixBrush == brush) return;
+                _suffixBrush = brush;
+                InvalidateVisual();
+            }
         }
 
         public TextAlignment Alignment
@@ -97,13 +109,13 @@ namespace StatsOSD
         protected override Size MeasureOverride(Size availableSize)
         {
             double small = FontSize * SmallScale;
-            FormattedText main = Ft(string.IsNullOrEmpty(_text) ? "0" : _text, FontSize, Brushes.White);
+            FormattedText main = Ft(string.IsNullOrEmpty(_text) ? "--" : _text, FontSize, Brushes.White);
             double w = main.Width;
             double h = main.Height;
             if (!string.IsNullOrEmpty(_prefix))
             {
                 FormattedText ft = Ft(_prefix, small, Brushes.White);
-                w += ft.Width;
+                w += ft.WidthIncludingTrailingWhitespace;
                 h = Math.Max(h, ft.Height);
             }
             if (!string.IsNullOrEmpty(_suffix))
@@ -129,10 +141,10 @@ namespace StatsOSD
 
             double total = 0;
             FormattedText prefixFt = null, mainFt = null, suffixFt = null;
-            if (!string.IsNullOrEmpty(_prefix)) { prefixFt = Ft(_prefix, small, Brushes.White); total += prefixFt.Width; }
-            mainFt = Ft(string.IsNullOrEmpty(_text) ? "--" : _text, FontSize, Brushes.White);
+            if (!string.IsNullOrEmpty(_prefix)) { prefixFt = Ft(_prefix, small, SuffixBrush); total += prefixFt.WidthIncludingTrailingWhitespace; }
+            mainFt = Ft(string.IsNullOrEmpty(_text) ? "--" : _text, FontSize, TextBrush);
             total += mainFt.Width;
-            if (!string.IsNullOrEmpty(_suffix)) { suffixFt = Ft(_suffix, small, Brushes.White); total += suffixFt.Width; }
+            if (!string.IsNullOrEmpty(_suffix)) { suffixFt = Ft(_suffix, small, SuffixBrush); total += suffixFt.Width; }
 
             double x0;
             switch (_alignment)
@@ -147,7 +159,7 @@ namespace StatsOSD
             if (prefixFt != null)
             {
                 Draw(dc, prefixFt, x, y0 + mainFt.Baseline - prefixFt.Baseline, SuffixBrush, pen);
-                x += prefixFt.Width;
+                x += prefixFt.WidthIncludingTrailingWhitespace;
             }
             Draw(dc, mainFt, x, y0, TextBrush, pen);
             x += mainFt.Width;

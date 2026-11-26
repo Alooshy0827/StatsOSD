@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Win32;
 
 namespace StatsOSD
@@ -20,37 +21,38 @@ namespace StatsOSD
         private const string ExeValueName = "ExecutablePath";
         private const string PromotedValueName = "IsPromoted";
 
-        /// <summary>反查本程序对应的托盘条目名；null = 系统还没登记（图标从未出现过）</summary>
-        private static string FindOurKeyName(string exe)
+        /// <summary>查找 Windows 为当前程序路径保存的托盘位置记录。</summary>
+        private static IEnumerable<string> FindOurKeyNames(string exe)
         {
             using (RegistryKey baseKey = Registry.CurrentUser.OpenSubKey(BasePath))
             {
-                if (baseKey == null) return null;
+                if (baseKey == null) yield break;
                 foreach (string sub in baseKey.GetSubKeyNames())
                 {
                     using (RegistryKey k = baseKey.OpenSubKey(sub))
                     {
                         string p = k?.GetValue(ExeValueName) as string;
-                        if (p != null && string.Equals(p, exe, StringComparison.OrdinalIgnoreCase)) return sub;
+                        if (p != null && string.Equals(p, exe, StringComparison.OrdinalIgnoreCase)) yield return sub;
                     }
                 }
             }
-            return null;
         }
 
-        /// <summary>true=常显，false=溢出；null=系统尚未登记该图标</summary>
+        /// <summary>true=常显，false=溢出；没有记录、记录不一致或无法读取时返回 null。</summary>
         public static bool? IsPromoted()
         {
             try
             {
-                string sub = FindOurKeyName(Environment.ProcessPath);
-                if (sub == null) return null;
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(BasePath + "\\" + sub))
+                bool? promoted = null;
+                foreach (string sub in FindOurKeyNames(Environment.ProcessPath))
                 {
-                    object v = k?.GetValue(PromotedValueName);
-                    if (v == null) return false;                    // 值缺失 = 未常显
-                    return Convert.ToInt32(v) != 0;
+                    using RegistryKey k = Registry.CurrentUser.OpenSubKey(BasePath + "\\" + sub);
+                    if (k == null) continue;
+                    bool value = Convert.ToInt32(k.GetValue(PromotedValueName)) != 0;
+                    if (promoted.HasValue && promoted.Value != value) return null;
+                    promoted = value;
                 }
+                return promoted;
             }
             catch (Exception ex)
             {
@@ -64,23 +66,24 @@ namespace StatsOSD
         {
             try
             {
-                string sub = FindOurKeyName(Environment.ProcessPath);
-                if (sub == null)
+                bool found = false;
+                foreach (string sub in FindOurKeyNames(Environment.ProcessPath))
                 {
-                    message = "系统还没登记本程序的托盘图标，请先重启一次本程序再设置";
-                    return false;
-                }
-
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(BasePath + "\\" + sub, true))
-                {
+                    using RegistryKey k = Registry.CurrentUser.OpenSubKey(BasePath + "\\" + sub, true);
                     if (k == null) { message = "无法写入托盘设置项（权限不足）"; return false; }
                     k.SetValue(PromotedValueName, promoted ? 1 : 0, RegistryValueKind.DWord);
+                    found = true;
+                }
+                if (!found)
+                {
+                    message = "Windows 没有可写的图标位置记录，可在任务栏设置中调整托盘图标。";
+                    return false;
                 }
 
                 message = promoted
                     ? "已设为「托盘常显区」（任务栏右侧直接可见）"
                     : "已设为「托盘溢出区」（收进 ^ 里）";
-                App.Log("tray placement -> promoted=" + promoted + " (key " + sub + ")");
+                App.Log("tray placement -> promoted=" + promoted);
                 return true;
             }
             catch (Exception ex)

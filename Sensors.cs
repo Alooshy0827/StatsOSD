@@ -45,7 +45,8 @@ namespace StatsOSD
         private Computer _computer;
         private readonly List<IHardware> _cpus = new List<IHardware>();
         private readonly List<IHardware> _gpus = new List<IHardware>();
-        private bool _opened;
+        private volatile bool _opened;
+        public bool IsOpen => _opened;
 
         /// <summary>硬件厂商（用于分组配色）：Intel / AMD / NVIDIA / 空</summary>
         public string CpuVendor { get; private set; } = "";
@@ -163,9 +164,10 @@ namespace StatsOSD
 
         public void Open()
         {
+            if (_opened) return;
             try
             {
-                var c = new Computer
+                _computer = new Computer
                 {
                     IsCpuEnabled = true,
                     IsGpuEnabled = true,
@@ -175,8 +177,7 @@ namespace StatsOSD
                     IsNetworkEnabled = false,
                     IsStorageEnabled = false
                 };
-                c.Open();
-                _computer = c;
+                _computer.Open();
                 RefreshAll();
 
                 foreach (IHardware hw in _computer.Hardware)
@@ -188,7 +189,6 @@ namespace StatsOSD
                              hw.HardwareType == HardwareType.GpuIntel)
                         _gpus.Add(hw);
                 }
-                _opened = true;
                 CpuVendor = _cpus.Count > 0 ? DetectCpuVendor(_cpus[0].Name) : "";
                 CpuName = _cpus.Count > 0 ? _cpus[0].Name : "";
                 MemType = ReadMemoryType();
@@ -200,6 +200,7 @@ namespace StatsOSD
                               : t == HardwareType.GpuIntel ? "Intel" : "";
                     GpuName = _gpus[0].Name;
                 }
+                _opened = true;
                 App.Log("sensors open ok: cpus=" + _cpus.Count + ", gpus=" + _gpus.Count
                         + ", cpuVendor=" + (CpuVendor == "" ? "?" : CpuVendor)
                         + ", gpuVendor=" + (GpuVendor == "" ? "?" : GpuVendor)
@@ -207,6 +208,7 @@ namespace StatsOSD
             }
             catch (Exception ex)
             {
+                Close();
                 App.Log("sensors open error: " + ex.Message);
             }
         }
@@ -214,6 +216,10 @@ namespace StatsOSD
         public Sample Sample()
         {
             var r = new Sample();
+            double?[] mem = ReadMemory();
+            r.MemPercent = mem[0];
+            r.MemUsedGb = mem[1];
+            r.MemTotalGb = mem[2];
             if (!_opened || _computer == null)
             {
                 r.Warn = "传感器初始化中…";
@@ -248,11 +254,6 @@ namespace StatsOSD
                 if (r.GpuTemp.HasValue && r.GpuLoad.HasValue && r.GpuPower.HasValue
                     && r.GpuHotspot.HasValue && r.GpuClock.HasValue && r.GpuVram.HasValue) break;
             }
-
-            double?[] mem = ReadMemory();
-            r.MemPercent = mem[0];
-            r.MemUsedGb = mem[1];
-            r.MemTotalGb = mem[2];
 
             if (!r.HasAny)
             {
@@ -463,10 +464,12 @@ namespace StatsOSD
 
         public void Close()
         {
+            _opened = false;
             try { _computer?.Close(); } catch (Exception ex) { App.Log("close error: " + ex.Message); }
             _computer = null;
             _cpus.Clear();
             _gpus.Clear();
+            CpuVendor = GpuVendor = CpuName = GpuName = MemType = "";
         }
     }
 }

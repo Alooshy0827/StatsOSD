@@ -1,7 +1,7 @@
 <Window x:Class="StatsOSD.BgAlphaWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="背景透明度"
+        Title="背景不透明度"
         WindowStyle="ToolWindow"
         ResizeMode="NoResize"
         SizeToContent="WidthAndHeight"
@@ -18,6 +18,6 @@
         <Slider x:Name="Slider" Minimum="0" Maximum="100" TickFrequency="5"
                 IsSnapToTickEnabled="False" Margin="0,10,0,0" ValueChanged="OnValueChanged" />
         <TextBlock TextWrapping="Wrap" Foreground="#FF8A8A9A" FontSize="11" Margin="0,10,0,0"
-                   Text="0% = 背景完全透明（纯文字悬浮）；100% = 全不透明。拖动滑杆实时预览右上角 OSD 效果，Esc 关闭。" />
+                   Text="拖动滑杆可同时调整桌面 OSD 和任务栏面板的底色。0% 只显示文字，100% 为纯色背景。按 Esc 关闭。" />
     </StackPanel>
 </Window>

@@ -1,14 +1,18 @@
 using System;
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 using Microsoft.Win32;
 
 namespace StatsOSD
 {
     /// <summary>
     /// 开机自启管理。
-    /// 优先级：管理员权限下建"登录时以最高权限运行"的计划任务（自启即带管理员权限，免 UAC 弹窗）；
-    /// 否则退回注册表 HKCU\...\Run 项（普通权限启动）。
+    /// 使用最高权限的登录计划任务；兼容旧版本的注册表 Run 项。
     /// </summary>
     internal static class AutoStart
     {
@@ -16,14 +20,22 @@ namespace StatsOSD
         private const string ValueName = "StatsOSD";
         private const string TaskName = "StatsOSD";
 
-        public static bool IsEnabled()
+        public static bool? ReadState(out string error)
         {
+            error = null;
             try
             {
                 if (ReadRunValue() != null) return true;
             }
-            catch (Exception ex) { App.Log("autostart: 读取 Run 项失败 " + ex.Message); }
-            return TaskExists();
+            catch (Exception ex) { error = "读取登录启动项失败：" + ex.Message; }
+            try
+            {
+                if (ReadTaskEnabled() == true) { error = null; return true; }
+            }
+            catch (Exception ex) { error = "读取计划任务失败：" + ex.GetBaseException().Message; }
+            if (error == null) return false;
+            App.Log("autostart: " + error);
+            return null;
         }
 
         /// <summary>开启自启，how 返回实际采用的方式描述</summary>
@@ -33,31 +45,37 @@ namespace StatsOSD
             string exe = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exe)) { how = "无法获取程序路径"; return false; }
 
-            if (App.IsAdmin() && CreateTask(exe))
+            if (CreateTask(exe, out string detail))
             {
-                RemoveRunValue();
+                if (!RemoveRunValue())
+                {
+                    how = "管理员登录计划任务已启用，旧版登录启动项清理失败";
+                    return false;
+                }
                 how = "计划任务 · 登录时以管理员权限启动（免 UAC）";
                 return true;
             }
 
-            if (WriteRunValue(exe))
-            {
-                how = App.IsAdmin()
-                    ? "注册表 Run 项（计划任务创建失败，已退回；自启为普通权限）"
-                    : "注册表 Run 项（自启为普通权限，CPU 温度需手动提权）";
-                return true;
-            }
-
-            how = "写入自启项失败";
+            how = "创建管理员登录计划任务失败：" + detail;
             return false;
         }
 
         public static bool Disable(out string how)
         {
-            bool removedRun = RemoveRunValue();
-            bool removedTask = DeleteTask();
-            how = (removedRun || removedTask) ? "已移除自启项" : "原本就没有自启项";
-            return true;
+            try
+            {
+                bool hasRun = ReadRunValue() != null;
+                if (hasRun && !RemoveRunValue()) { how = "未能移除旧版登录启动项"; return false; }
+                bool hasTask = ReadTaskEnabled().HasValue;
+                if (hasTask && !DeleteTask(out string detail)) { how = "删除计划任务失败：" + detail; return false; }
+                how = hasRun || hasTask ? "已移除自启项" : "自启项已关闭";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                how = "无法检查或移除自启项：" + ex.GetBaseException().Message;
+                return false;
+            }
         }
 
         /// <summary>程序路径变化（比如移动了文件夹）时自动修正自启项</summary>
@@ -69,14 +87,15 @@ namespace StatsOSD
                 if (string.IsNullOrEmpty(exe)) return;
 
                 string runValue = ReadRunValue();
-                if (runValue != null && !string.Equals(runValue.Trim('"'), exe, StringComparison.OrdinalIgnoreCase))
+                if (runValue != null)
                 {
-                    App.Log("autostart: Run 项路径已过期，正在修正 -> " + exe);
+                    App.Log("autostart: 迁移旧版 Run 项到管理员登录计划任务 -> " + exe);
                     Enable(out _);
                     return;
                 }
 
-                if (TaskExists() && App.IsAdmin() && !TaskPointsTo(exe))
+                if (App.IsAdmin() && RunSchtasks(out string xml, "/Query", "/TN", TaskName, "/XML") == 0
+                    && !TaskPointsTo(xml, exe))
                 {
                     App.Log("autostart: 计划任务路径已过期，正在重建 -> " + exe);
                     Enable(out _);
@@ -95,32 +114,13 @@ namespace StatsOSD
             }
         }
 
-        private static bool WriteRunValue(string exe)
-        {
-            try
-            {
-                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(RunKeyPath))
-                {
-                    if (k == null) return false;
-                    k.SetValue(ValueName, "\"" + exe + "\"", RegistryValueKind.String);
-                }
-                App.Log("autostart: Run 项已写入 -> " + exe);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                App.Log("autostart: 写 Run 项失败 " + ex.Message);
-                return false;
-            }
-        }
-
         private static bool RemoveRunValue()
         {
             try
             {
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
                 {
-                    if (k?.GetValue(ValueName) == null) return false;
+                    if (k?.GetValue(ValueName) == null) return true;
                     k.DeleteValue(ValueName, false);
                 }
                 App.Log("autostart: Run 项已删除");
@@ -135,20 +135,41 @@ namespace StatsOSD
 
         // ---------- 计划任务 ----------
 
-        private static bool TaskExists()
+        // null means the task does not exist. Query failures must reach the caller.
+        private static bool? ReadTaskEnabled()
         {
-            return RunSchtasks("/Query", "/TN", TaskName) == 0;
+            object service = null, folder = null, task = null;
+            try
+            {
+                service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service", throwOnError: true));
+                Call(service, "Connect");
+                folder = Call(service, "GetFolder", "\\");
+                try { task = Call(folder, "GetTask", TaskName); }
+                catch (Exception ex) when (ex.GetBaseException().HResult == unchecked((int)0x80070002)) { return null; }
+                return (bool)task.GetType().InvokeMember("Enabled", BindingFlags.GetProperty, null, task, null);
+            }
+            finally
+            {
+                if (task != null) Marshal.ReleaseComObject(task);
+                if (folder != null) Marshal.ReleaseComObject(folder);
+                if (service != null) Marshal.ReleaseComObject(service);
+            }
         }
 
-        private static bool TaskPointsTo(string exe)
+        private static object Call(object target, string method, params object[] args) =>
+            target.GetType().InvokeMember(method, BindingFlags.InvokeMethod, null, target, args);
+
+        private static bool TaskPointsTo(string xml, string exe)
         {
-            string xml = RunSchtasksCapture("/Query", "/TN", TaskName, "/XML");
-            return xml != null && xml.IndexOf(exe, StringComparison.OrdinalIgnoreCase) >= 0;
+            var task = XDocument.Parse(xml).Root;
+            XNamespace ns = task.Name.Namespace;
+            string command = (string)task.Element(ns + "Actions")?.Element(ns + "Exec")?.Element(ns + "Command");
+            return string.Equals(command?.Trim().Trim('"'), exe, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool CreateTask(string exe)
+        private static bool CreateTask(string exe, out string detail)
         {
-            int code = RunSchtasks(
+            int code = RunSchtasks(out detail,
                 "/Create", "/TN", TaskName,
                 "/TR", "\"" + exe + "\"",
                 "/SC", "ONLOGON",
@@ -159,51 +180,19 @@ namespace StatsOSD
             return code == 0;
         }
 
-        private static bool DeleteTask()
+        private static bool DeleteTask(out string detail)
         {
-            int code = RunSchtasks("/Delete", "/TN", TaskName, "/F");
+            int code = RunSchtasks(out detail, "/Delete", "/TN", TaskName, "/F");
             if (code == 0) App.Log("autostart: 计划任务已删除");
             return code == 0;
         }
 
-        private static int RunSchtasks(params string[] args)
+        private static int RunSchtasks(out string output, params string[] args)
         {
+            output = null;
             try
             {
-                var psi = new ProcessStartInfo("schtasks.exe")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                foreach (string a in args) psi.ArgumentList.Add(a);
-
-                using (Process p = Process.Start(psi))
-                {
-                    if (p == null) return -1;
-                    p.StandardOutput.ReadToEnd();
-                    p.StandardError.ReadToEnd();
-                    if (!p.WaitForExit(15000))
-                    {
-                        try { p.Kill(); } catch { }
-                        return -1;
-                    }
-                    return p.ExitCode;
-                }
-            }
-            catch (Exception ex)
-            {
-                App.Log("autostart: schtasks 调用失败 " + ex.Message);
-                return -1;
-            }
-        }
-
-        private static string RunSchtasksCapture(params string[] args)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo("schtasks.exe")
+                var psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "schtasks.exe"))
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -212,20 +201,30 @@ namespace StatsOSD
                     StandardOutputEncoding = Encoding.UTF8
                 };
                 foreach (string a in args) psi.ArgumentList.Add(a);
-
-                using (Process p = Process.Start(psi))
+                using Process p = Process.Start(psi);
+                if (p == null) { output = "未能启动任务计划程序"; return -1; }
+                var stdout = p.StandardOutput.ReadToEndAsync();
+                var stderr = p.StandardError.ReadToEndAsync();
+                try
                 {
-                    if (p == null) return null;
-                    string output = p.StandardOutput.ReadToEnd();
-                    p.StandardError.ReadToEnd();
-                    p.WaitForExit(15000);
-                    return p.ExitCode == 0 ? output : null;
+                    Task.WhenAll(stdout, stderr, p.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
                 }
+                catch (TimeoutException)
+                {
+                    if (!p.HasExited) p.Kill();
+                    App.Log("autostart: schtasks 超时");
+                    output = "任务计划程序响应超时";
+                    return -1;
+                }
+                output = p.ExitCode == 0 ? stdout.Result : stderr.Result.Trim();
+                if (p.ExitCode != 0 && string.IsNullOrWhiteSpace(output)) output = "系统退出码 " + p.ExitCode;
+                return p.ExitCode;
             }
             catch (Exception ex)
             {
-                App.Log("autostart: schtasks 读取失败 " + ex.Message);
-                return null;
+                App.Log("autostart: schtasks 调用失败 " + ex.Message);
+                output = ex.Message;
+                return -1;
             }
         }
     }

@@ -22,7 +22,6 @@ namespace StatsOSD
             _saveTimer.Tick += (s, e) =>
             {
                 _saveTimer.Stop();
-                _cfg.BackgroundAlpha = (int)Math.Round(Slider.Value);
                 _cfg.Save();
             };
 
@@ -34,8 +33,8 @@ namespace StatsOSD
             PreviewKeyDown += (s, e) => { if (e.Key == Key.Escape) Close(); };
             Closed += (s, e) =>
             {
+                if (!_saveTimer.IsEnabled) return;
                 _saveTimer.Stop();
-                _cfg.BackgroundAlpha = (int)Math.Round(Slider.Value);
                 _cfg.Save();
             };
         }
@@ -44,7 +43,10 @@ namespace StatsOSD
         {
             if (_internal) return;
             UpdateText();
-            _liveApply?.Invoke((int)Math.Round(Slider.Value));
+            int percent = (int)Math.Round(Slider.Value);
+            if (_cfg.BackgroundAlpha == percent) return;
+            _cfg.BackgroundAlpha = percent;
+            _liveApply?.Invoke(percent);
             _saveTimer.Stop();
             _saveTimer.Start();
         }
