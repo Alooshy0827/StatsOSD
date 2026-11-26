@@ -2,7 +2,7 @@
 
 <img src="assets/icon.png" width="88" alt="StatsOSD icon">
 
-**版本：v1.2.1** ｜ [GitHub 发布页](https://github.com/Alooshy0827/StatsOSD/releases/latest) ｜ Windows 10/11 x64 ｜ [许可：专有软件](LICENSE)
+**版本：v1.3.0** ｜ [GitHub 发布页](https://github.com/Alooshy0827/StatsOSD/releases/latest) ｜ Windows 10/11 x64 ｜ [许可：专有软件](LICENSE)
 
 透明置顶、鼠标穿透的硬件监控小面板，常驻屏幕角落，实时显示 CPU / GPU / 内存的温度、功耗、负载、频率等（类似微星小飞机的监控叠加层）。
 
