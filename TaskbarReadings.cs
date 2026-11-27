@@ -25,12 +25,18 @@ namespace StatsOSD
 
         public TaskbarReadings()
         {
-            string[] labels = { "CPU", "GPU", "内存" };
+            string[] labels = { "CPU", "GPU", "MEM" };
+            Grid.SetIsSharedSizeScope(_grid, true);
             for (int i = 0; i < labels.Length; i++)
             {
-                var cell = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                // Give each Viewbox the same content size even when one reading is wider or missing.
+                var cell = new Grid();
+                cell.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "ReadingWidth" });
+                cell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, SharedSizeGroup = "LabelHeight" });
+                cell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, SharedSizeGroup = "ValueHeight" });
                 _labels[i] = new OutlinedText { Text = labels[i], Alignment = TextAlignment.Center };
                 _values[i] = new OutlinedText { Text = "--", Alignment = TextAlignment.Center };
+                Grid.SetRow(_values[i], 1);
                 cell.Children.Add(_labels[i]);
                 cell.Children.Add(_values[i]);
                 _grid.Children.Add(new Border
