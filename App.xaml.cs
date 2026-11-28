@@ -53,6 +53,8 @@ namespace StatsOSD
         private readonly WF.ToolStripMenuItem[] _miCorner = new WF.ToolStripMenuItem[4];
         private readonly List<WF.ToolStripMenuItem> _miMetrics = new List<WF.ToolStripMenuItem>();
         private readonly WF.ToolStripMenuItem[] _miLayout = new WF.ToolStripMenuItem[3];
+        private WF.ToolStripMenuItem _miHorizontalGroups;
+        private WF.ToolStripMenuItem _miVerticalGroups;
         private readonly WF.ToolStripMenuItem[] _miFont = new WF.ToolStripMenuItem[4];
         private WF.ToolStripMenuItem _miOutline;
         private readonly WF.ToolStripMenuItem[] _miIconPlace = new WF.ToolStripMenuItem[2];
@@ -522,6 +524,10 @@ namespace StatsOSD
                 _miLayout[i] = AddChoice(layout, names[i], (s, e) => SetLayout(id));
             }
 
+            var direction = Add(items, "排列方向");
+            _miHorizontalGroups = AddChoice(direction, "横向排列", (s, e) => SetGroupDirection(true));
+            _miVerticalGroups = AddChoice(direction, "竖向排列", (s, e) => SetGroupDirection(false));
+
             var position = Add(items, "停靠位置");
             string[] corners = { "左上角", "右上角", "左下角", "右下角" };
             for (int i = 0; i < corners.Length; i++)
@@ -546,6 +552,12 @@ namespace StatsOSD
                 double scale = FontScales[i];
                 _miFont[i] = AddChoice(size, names[i], (s, e) => SetFontScale(scale));
             }
+            AddToggle(items, "粗体文本", (s, e) =>
+            {
+                _cfg.TextBold = ((WF.ToolStripMenuItem)s).Checked;
+                _cfg.Save();
+                ApplyTextSettings();
+            }, _cfg.TextBold);
             _miOutline = AddToggle(items, "字体描边", (s, e) => ToggleOutline(), _cfg.TextOutline);
             _miOpacity = Add(items, "", (s, e) => OpenBgWindow());
             UpdateAlphaMenuText(_cfg.BackgroundAlpha);
@@ -597,6 +609,8 @@ namespace StatsOSD
         {
             string preset = (_cfg.LayoutPreset ?? "standard").ToLowerInvariant();
             for (int i = 0; i < LayoutIds.Length; i++) _miLayout[i].Checked = preset == LayoutIds[i];
+            _miHorizontalGroups.Checked = _cfg.ArrangeGroupsHorizontally;
+            _miVerticalGroups.Checked = !_miHorizontalGroups.Checked;
 
             for (int i = 0; i < FontScales.Length; i++) _miFont[i].Checked = Math.Abs(_cfg.FontScale - FontScales[i]) < 0.01;
         }
@@ -627,10 +641,21 @@ namespace StatsOSD
         private void SetLayout(string preset)
         {
             _cfg.LayoutPreset = preset;
+            ApplyDesktopLayout();
+        }
+
+        private void SetGroupDirection(bool horizontal)
+        {
+            _cfg.HorizontalGroups = horizontal;
+            ApplyDesktopLayout();
+        }
+
+        private void ApplyDesktopLayout()
+        {
             _cfg.Save();
             _overlay.ApplyConfig(_cfg);
             SyncLayoutFontChecks();
-            Log("layout preset -> " + preset);
+            Log("layout -> " + _cfg.LayoutPreset + ", horizontal groups=" + _cfg.ArrangeGroupsHorizontally);
         }
 
         private void SetFontScale(double scale)

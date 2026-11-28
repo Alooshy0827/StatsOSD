@@ -114,9 +114,10 @@ namespace StatsOSD
                 Text = model,
                 FontName = FontName,
                 FontSize = baseSize * 0.70,     // 型号是这张卡的标题，略大于数值（0.68）
+                FontWeight = DisplayTextWeight,
                 TextBrush = BrModel,
                 StrokeBrush = OutlineBrush,
-                StrokeThickness = 1.6 * Scale,
+                StrokeThickness = 1.6 * OutlineScale,
                 HorizontalAlignment = HorizontalAlignment.Left
             };
         }
@@ -381,12 +382,23 @@ namespace StatsOSD
         {
             InitializeComponent();
             SizeChanged += (s, e) => ApplyCorner();
+            LocationChanged += (s, e) => UpdateWidthLimit();
+            DpiChanged += (s, e) => UpdateWidthLimit();
         }
 
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
+            UpdateWidthLimit();
             ApplyStyle();
+        }
+
+        private void UpdateWidthLimit()
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            double workWidth = handle == IntPtr.Zero ? SystemParameters.WorkArea.Width
+                : WF.Screen.FromHandle(handle).WorkingArea.Width / VisualTreeHelper.GetDpi(this).DpiScaleX;
+            MaxWidth = Math.Max(MinWidth, workWidth - 28); // 两侧各留 14 DIP 贴角边距
         }
 
         private void ApplyStyle()
@@ -408,6 +420,12 @@ namespace StatsOSD
 
         public void ApplyCorner()
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.InvokeAsync(ApplyCorner);
+                return;
+            }
+            UpdateWidthLimit();
             if (_freeMode) return;          // 自由位置模式：不自动贴角
             if (_positioning) return;
             _positioning = true;
@@ -462,6 +480,7 @@ namespace StatsOSD
         public void ApplyConfig(Settings cfg)
         {
             _cfg = cfg;
+            Warn.FontWeight = DragHint.FontWeight = DisplayTextWeight;
             Warn.Effect = OutlineOrNull;
             DragHint.Effect = OutlineOrNull;
             BuildContent();
@@ -478,15 +497,19 @@ namespace StatsOSD
         }
 
         private double ValueFontSize => 19 * Scale * 0.68;
+        private FontWeight DisplayTextWeight => _cfg?.TextBold == true ? FontWeights.Bold : FontWeights.Normal;
+        // 粗体的笔画已经更宽，收细外缘以保留数字和单位的字腔。
+        private double OutlineScale => Scale * (_cfg?.TextBold == true ? 0.75 : 1.0);
 
-        internal void StyleMetricText(OutlinedText text, bool label)
+        internal void StyleMetricText(OutlinedText text, bool label, Brush readingBrush = null)
         {
             text.FontName = FontName;
             text.FontSize = label ? 11.5 * Scale : ValueFontSize;
+            text.FontWeight = DisplayTextWeight;
             text.StrokeBrush = OutlineBrush;
-            text.StrokeThickness = 2 * Scale;
+            text.StrokeThickness = 2 * OutlineScale;
             text.SmallScale = 0.78;
-            text.TextBrush = label ? BrGroupName : BrCool;
+            text.TextBrush = label ? BrGroupName : (readingBrush ?? BrCool);
             text.SuffixBrush = BrUnit;
             text.InvalidateMeasure();
             text.InvalidateVisual();
@@ -502,6 +525,7 @@ namespace StatsOSD
             _appliedWidth.Clear();
             if (_cfg == null) return;
 
+            RowsPanel.Orientation = _cfg.ArrangeGroupsHorizontally ? Orientation.Horizontal : Orientation.Vertical;
             List<MetricDef> metrics = Metrics.Resolve(_cfg.Metrics);
             string preset = (_cfg.LayoutPreset ?? "standard").ToLowerInvariant();
             double baseSize = 19 * Scale;
@@ -510,6 +534,23 @@ namespace StatsOSD
             else if (preset == "detailed") BuildDetailed(metrics, baseSize);
             else BuildStandard(metrics, baseSize);
             if (_lastSample != null) Update(_lastSample);
+        }
+
+        private void AddGroup(string group, UIElement content, Thickness padding)
+        {
+            RowsPanel.Children.Add(new Border
+            {
+                Background = GetGroupBackground(group),
+                VerticalAlignment = VerticalAlignment.Top,
+                Padding = padding,
+                // 换行以整组为单位；只有单组超过可用宽度时才缩小组内文字。
+                Child = new Viewbox
+                {
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly,
+                    Child = content
+                }
+            });
         }
 
         /// <summary>按出现顺序把指标分组（同组共用一个行标签）</summary>
@@ -527,14 +568,13 @@ namespace StatsOSD
         }
 
         /// <summary>文本宽度实测（列宽估算用）</summary>
-        private double MeasureText(string text, double fontSize, bool bold)
+        private double MeasureText(string text, double fontSize)
         {
             try
             {
-                var tf = new Typeface(new FontFamily(FontName), FontStyles.Normal,
-                    bold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
+                var tf = new Typeface(new FontFamily(FontName), FontStyles.Normal, DisplayTextWeight, FontStretches.Normal);
                 var ft = new FormattedText(text ?? "", System.Globalization.CultureInfo.CurrentUICulture,
-                    FlowDirection.LeftToRight, tf, fontSize, Brushes.White, 1.0);
+                    FlowDirection.LeftToRight, tf, fontSize, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
                 return ft.Width;
             }
             catch { return fontSize * 3; }
@@ -544,11 +584,11 @@ namespace StatsOSD
         private double ValueWidth(MetricDef def, double valueSize, double smallScale)
         {
             string sample = string.IsNullOrEmpty(def.WidthSample) ? "888" : def.WidthSample;
-            double w = MeasureText(sample, valueSize, false);
+            double w = MeasureText(sample, valueSize);
             if (!string.IsNullOrEmpty(def.Suffix))
             {
                 string sfx = def.Suffix.Length >= 2 && char.IsLetter(def.Suffix[0]) ? " " + def.Suffix : def.Suffix;
-                w += MeasureText(sfx, valueSize * smallScale, false);
+                w += MeasureText(sfx, valueSize * smallScale);
             }
             return w;
         }
@@ -559,7 +599,6 @@ namespace StatsOSD
             List<List<MetricDef>> groups = GroupByOrder(metrics);
             double valueSize = ValueFontSize;
 
-            int rowIndex = 0;
             foreach (List<MetricDef> group in groups)
             {
                 // 本卡的列宽（不跨卡共享，避免被别行的长值撑出空隙）
@@ -580,14 +619,6 @@ namespace StatsOSD
                     content.Children.Add(mt);
                 }
                 content.Children.Add(row);
-
-                var block = new Border
-                {
-                    Background = GetGroupBackground(group[0].Group),
-                    Padding = new Thickness(7 * Scale, 4 * Scale, 7 * Scale, 4 * Scale),
-                    CornerRadius = new CornerRadius(0),
-                    Child = content
-                };
 
                 bool first = true;
                 var cardCells = new List<OutlinedText>();
@@ -610,22 +641,19 @@ namespace StatsOSD
                 }
                 _stdCards.Add(cardCells);
 
-                RowsPanel.Children.Add(block);
-                rowIndex++;
+                AddGroup(group[0].Group, content, new Thickness(7 * Scale, 4 * Scale, 7 * Scale, 4 * Scale));
             }
         }
 
-        /// <summary>迷你布局：单行，每组只显示主指标（温度），带组标签</summary>
+        /// <summary>迷你布局：每组只显示主指标。</summary>
         private void BuildMini(List<MetricDef> metrics)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
             foreach (List<MetricDef> group in GroupByOrder(metrics))
             {
                 MetricDef def = null;
                 foreach (MetricDef d in group) { if (d.Style == MetricStyle.Primary) { def = d; break; } }
                 if (def == null) def = group[0];
 
-                var cell = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
                 // 迷你布局不再显示分组名（色块本身即分组标识）
                 var tb = new OutlinedText
                 {
@@ -633,103 +661,81 @@ namespace StatsOSD
                 };
                 StyleMetricText(tb, label: false);
                 _cells.Add(new Cell { Def = def, Value = tb });
-                cell.Children.Add(tb);
-                row.Children.Add(new Border
-                {
-                    Background = GetGroupBackground(def.Group),
-                    CornerRadius = new CornerRadius(0),
-                    Padding = new Thickness(6 * Scale, 3 * Scale, 6 * Scale, 3 * Scale),
-                    Child = cell
-                });
+                AddGroup(def.Group, tb, new Thickness(6 * Scale, 3 * Scale, 6 * Scale, 3 * Scale));
             }
-            RowsPanel.Children.Add(row);
         }
 
         /// <summary>详细布局名称列宽：按最长名称实测（上限 200*缩放）</summary>
-        private double MeasureNameWidth(List<MetricDef> metrics, double baseSize)
+        private double MeasureNameWidth(List<MetricDef> metrics)
         {
             double max = 60 * Scale;
-            var typeface = new Typeface(new FontFamily(FontName), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
             foreach (MetricDef def in metrics)
             {
-                try
-                {
-                    var ft = new FormattedText(DisplayName(def), System.Globalization.CultureInfo.CurrentUICulture,
-                        FlowDirection.LeftToRight, typeface, 11.5 * Scale, Brushes.White, 1.0);
-                    if (ft.Width > max) max = ft.Width;
-                }
-                catch { }
+                max = Math.Max(max, MeasureText(DisplayName(def), 11.5 * Scale));
             }
-            return Math.Min(max + 12 * Scale, 200 * Scale);
+            double stroke = OutlineBrush != null ? 2 * OutlineScale : 0;
+            return Math.Min(max + stroke + 12 * Scale, 200 * Scale);
         }
 
         /// <summary>详细布局：每个指标一行，左侧完整名称、右侧数值（名称列宽按最长名称自动计算）</summary>
         private void BuildDetailed(List<MetricDef> metrics, double baseSize)
         {
-            double nameWidth = MeasureNameWidth(metrics, baseSize);
+            double nameWidth = MeasureNameWidth(metrics);
             // 数值列用实测最坏宽度（星号列在 SizeToContent 下会塌成 0 宽，导致数值压到名称上）
             double detailedValueSize = ValueFontSize;
             double valWidth = 0;
             foreach (MetricDef d in metrics) valWidth = Math.Max(valWidth, ValueWidth(d, detailedValueSize, 0.78));
             valWidth = Math.Max(valWidth + 3 * Scale, 40 * Scale);
-            int rowIndex = 0;
             // 按分组归并后渲染：同一硬件的型号行只出现一次（配置里的指标顺序可能是交叉的）
             foreach (List<MetricDef> group in GroupByOrder(metrics))
             {
+                var content = new StackPanel();
                 string model = ModelFor(group[0].Group);
                 if (!string.IsNullOrEmpty(model))
                 {
                     OutlinedText mt = MakeModelText(model, baseSize);
                     mt.Margin = new Thickness(6 * Scale, 2 * Scale, 6 * Scale, 2 * Scale);
-                    RowsPanel.Children.Add(new Border
-                    {
-                        Background = GetGroupBackground(group[0].Group),
-                        CornerRadius = new CornerRadius(0),
-                        Child = mt
-                    });
+                    content.Children.Add(mt);
                 }
 
                 foreach (MetricDef def in group)
                 {
-                var grid = new Grid
-                {
-                    Background = GetGroupBackground(def.Group)
-                };
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(nameWidth) });
-                // 数值列宽 = 最坏数值宽度 + 右侧留白（留白必须计入列宽，否则内容会溢出被裁）
-                var valCol = new ColumnDefinition { Width = new GridLength(valWidth + 14 * Scale) };
-                grid.ColumnDefinitions.Add(valCol);
-                _detailCols.Add(valCol);
+                    var grid = new Grid();
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(nameWidth) });
+                    // 数值列宽 = 最坏数值宽度 + 右侧留白（留白必须计入列宽，否则内容会溢出被裁）
+                    var valCol = new ColumnDefinition { Width = new GridLength(valWidth + 14 * Scale) };
+                    grid.ColumnDefinitions.Add(valCol);
+                    _detailCols.Add(valCol);
 
-                var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6 * Scale, 2 * Scale, 0, 2 * Scale) };
-                var name = new OutlinedText
-                {
-                    Text = DisplayName(def),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                StyleMetricText(name, label: true);
-                nameRow.Children.Add(name);
-                Grid.SetColumn(nameRow, 0);
+                    var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6 * Scale, 2 * Scale, 0, 2 * Scale) };
+                    var name = new OutlinedText
+                    {
+                        Text = DisplayName(def),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    StyleMetricText(name, label: true);
+                    nameRow.Children.Add(name);
+                    Grid.SetColumn(nameRow, 0);
 
-                var val = new OutlinedText
-                {
-                    Alignment = TextAlignment.Left,
-                    Width = valWidth,
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Margin = new Thickness(0, 2 * Scale, 14 * Scale, 2 * Scale),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                StyleMetricText(val, label: false);
-                Grid.SetColumn(val, 1);
-                _detailVals.Add(val);
-                _appliedWidth[val] = valWidth;
+                    var val = new OutlinedText
+                    {
+                        Alignment = TextAlignment.Left,
+                        Width = valWidth,
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        Margin = new Thickness(0, 2 * Scale, 14 * Scale, 2 * Scale),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    StyleMetricText(val, label: false);
+                    Grid.SetColumn(val, 1);
+                    _detailVals.Add(val);
+                    _appliedWidth[val] = valWidth;
 
                     _cells.Add(new Cell { Def = def, Value = val });
                     grid.Children.Add(nameRow);
                     grid.Children.Add(val);
-                    RowsPanel.Children.Add(grid);
-                    rowIndex++;
+                    content.Children.Add(grid);
                 }
+                AddGroup(group[0].Group, content, new Thickness(0));
             }
         }
 
@@ -791,8 +797,8 @@ namespace StatsOSD
 
         private double TextWidthOf(OutlinedText t)
         {
-            double w = MeasureText(t.Text, t.FontSize, t.FontWeight == FontWeights.Bold);
-            if (!string.IsNullOrEmpty(t.Suffix)) w += MeasureText(t.Suffix, t.FontSize * t.SmallScale, false);
+            double w = MeasureText(t.Text, t.FontSize);
+            if (!string.IsNullOrEmpty(t.Suffix)) w += MeasureText(t.Suffix, t.FontSize * t.SmallScale);
             return w;
         }
 

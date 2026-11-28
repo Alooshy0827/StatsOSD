@@ -61,7 +61,7 @@ namespace StatsOSD
             for (int i = 0; i < _metrics.Length; i++)
             {
                 osd.StyleMetricText(_labels[i], label: true);
-                osd.StyleMetricText(_values[i], label: false);
+                osd.StyleMetricText(_values[i], label: false, readingBrush: _values[i].TextBrush);
             }
             if (_fontScale == osd.Scale) return;
             _fontScale = osd.Scale;

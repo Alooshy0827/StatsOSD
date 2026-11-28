@@ -20,8 +20,12 @@ namespace StatsOSD
         // ---- 显示内容与外观（阶段 A：内容 / 形式 / 字体 均可配置）----
         public List<string> Metrics { get; set; } = new List<string>();  // 启用的指标 ID（顺序即显示顺序）；空 = 默认
         public string LayoutPreset { get; set; } = "standard";           // mini | standard | detailed
+        public bool? HorizontalGroups { get; set; }                      // null 时沿用当前预设的排列方向
+        internal bool ArrangeGroupsHorizontally =>
+            HorizontalGroups ?? string.Equals(LayoutPreset, "mini", StringComparison.OrdinalIgnoreCase);
         public double FontScale { get; set; } = 1.0;                     // 全局字号缩放
         public string FontFamily { get; set; } = "Consolas";             // 全局字体
+        public bool TextBold { get; set; }
         public bool TextOutline { get; set; } = true;                    // 字体描边（透明背景下提升可读性，默认开）
 
         private static string DirPath

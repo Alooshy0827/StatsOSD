@@ -146,6 +146,15 @@ namespace StatsOSD
             total += mainFt.Width;
             if (!string.IsNullOrEmpty(_suffix)) { suffixFt = Ft(_suffix, small, SuffixBrush); total += suffixFt.Width; }
 
+            Pen smallPen = pen;
+            if (pen != null && FontWeight == FontWeights.Bold && (prefixFt != null || suffixFt != null))
+            {
+                // Smaller bold units such as °C and % need a proportionally finer outline.
+                smallPen = pen.Clone();
+                smallPen.Thickness *= SmallScale;
+                smallPen.Freeze();
+            }
+
             double x0;
             switch (_alignment)
             {
@@ -158,14 +167,14 @@ namespace StatsOSD
             double x = x0;
             if (prefixFt != null)
             {
-                Draw(dc, prefixFt, x, y0 + mainFt.Baseline - prefixFt.Baseline, SuffixBrush, pen);
+                Draw(dc, prefixFt, x, y0 + mainFt.Baseline - prefixFt.Baseline, SuffixBrush, smallPen);
                 x += prefixFt.WidthIncludingTrailingWhitespace;
             }
             Draw(dc, mainFt, x, y0, TextBrush, pen);
             x += mainFt.Width;
             if (suffixFt != null)
             {
-                Draw(dc, suffixFt, x, y0 + mainFt.Baseline - suffixFt.Baseline, SuffixBrush, pen);
+                Draw(dc, suffixFt, x, y0 + mainFt.Baseline - suffixFt.Baseline, SuffixBrush, smallPen);
             }
         }
 
